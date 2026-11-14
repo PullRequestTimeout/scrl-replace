@@ -3,7 +3,7 @@
 	import ImagePlusIcon from '@lucide/svelte/icons/image-plus';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { toast } from 'svelte-sonner';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Progress } from '#lib/components/ui/progress/index.js';
 	import * as Drawer from '#lib/components/ui/drawer/index.js';
@@ -73,7 +73,7 @@
 	const megapixels = (p: Photo) => ((p.width * p.height) / 1e6).toFixed(1);
 </script>
 
-<AppHeader title={project?.name ?? 'Project'} backHref="/" backLabel="Projects" />
+<AppHeader title={project?.name ?? 'Project'} backHref="/p/{projectId}" backLabel="Project" />
 
 <input
 	bind:this={fileInput}
@@ -159,9 +159,13 @@
 			<Button variant="outline" class="flex-1" onclick={() => fileInput?.click()}>
 				<ImagePlusIcon /> Add photos
 			</Button>
-			<Button class="flex-1" disabled title="Grid row suggestions arrive in Phase 4">
-				Next: grid row
-			</Button>
+			<a
+				href="/p/{projectId}"
+				class={buttonVariants({ class: 'flex-1' })}
+				aria-disabled={importer.running}
+			>
+				Done
+			</a>
 		</div>
 	</div>
 {/if}

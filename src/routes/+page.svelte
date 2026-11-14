@@ -97,7 +97,7 @@
 		<ul class="flex flex-col gap-2 px-4">
 			{#each projects as project (project.id)}
 				<li class="flex items-center gap-3 rounded-lg border bg-card p-2">
-					<a href="/p/{project.id}/import" class="flex min-w-0 flex-1 items-center gap-3">
+					<a href="/p/{project.id}" class="flex min-w-0 flex-1 items-center gap-3">
 						<div class="grid h-16 w-[3.75rem] shrink-0 grid-cols-3 gap-px overflow-hidden rounded">
 							{#each [0, 1, 2] as i (i)}
 								{#if project.photoIds[i]}

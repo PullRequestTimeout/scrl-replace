@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Progress } from '#lib/components/ui/progress/index.js';
+	import { goto } from '$app/navigation';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
+	import { createProject, saveProject } from '#lib/storage/projects.ts';
+	import { REFERENCE_PROJECT_NAME } from '#lib/fixtures/reference.ts';
+	import { getColorSpace, setColorSpace } from '#lib/settings.ts';
+	import type { ColorSpace } from '#lib/model/constants.ts';
 	import {
 		formatBytes,
 		requestPersistentStorage,
@@ -22,6 +27,19 @@
 	async function persist() {
 		await requestPersistentStorage();
 		await refresh();
+	}
+
+	let colorSpace = $state<ColorSpace>(getColorSpace());
+
+	function chooseColorSpace(value: ColorSpace) {
+		colorSpace = value;
+		setColorSpace(value);
+	}
+
+	async function createReference() {
+		const project = await createProject(REFERENCE_PROJECT_NAME);
+		await saveProject({ ...project, kind: 'reference' });
+		await goto(`/p/${project.id}/import`);
 	}
 
 	const built = new Intl.DateTimeFormat(undefined, {
@@ -59,6 +77,37 @@
 		<p class="text-xs text-muted-foreground">
 			Delete projects from the Projects screen to free space.
 		</p>
+	</section>
+
+	<section class="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm">
+		<h2 class="font-medium">Colour</h2>
+		<p class="text-muted-foreground">
+			Colour space for imported copies and exports. Run the colour test, post both versions, and
+			keep whichever looks right on Instagram. Changing this affects photos imported afterwards.
+		</p>
+		<div class="flex rounded-md border p-0.5" role="radiogroup" aria-label="Colour space">
+			{#each [['srgb', 'sRGB'], ['display-p3', 'Display P3']] as [value, label] (value)}
+				<button
+					type="button"
+					role="radio"
+					aria-checked={colorSpace === value}
+					class="flex-1 rounded px-2 py-1.5 {colorSpace === value
+						? 'bg-secondary text-foreground'
+						: 'text-muted-foreground'}"
+					onclick={() => chooseColorSpace(value as ColorSpace)}>{label}</button
+				>
+			{/each}
+		</div>
+		<a href="/settings/colour" class="text-sm underline underline-offset-4">Run the colour test</a>
+	</section>
+
+	<section class="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm">
+		<h2 class="font-medium">Reference carousels</h2>
+		<p class="text-muted-foreground">
+			Rebuilds your three SCRL carousels from their 17 original photos, to check export quality
+			against what you posted.
+		</p>
+		<Button variant="outline" onclick={createReference}>Create reference project</Button>
 	</section>
 
 	<section class="flex flex-col gap-1 rounded-lg border bg-card p-4 text-sm">
