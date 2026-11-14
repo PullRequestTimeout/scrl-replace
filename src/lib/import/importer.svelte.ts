@@ -3,6 +3,7 @@ import { newId } from '#lib/storage/db.ts';
 import { addPhotoToProject } from '#lib/storage/projects.ts';
 import { requestPersistentStorage } from '#lib/storage/persist.ts';
 import { processImageFile } from '#lib/workers/client.ts';
+import { getColorSpace } from '#lib/settings.ts';
 
 export interface ImportFailure {
 	name: string;
@@ -54,11 +55,12 @@ export class Importer {
 	async #run() {
 		void requestPersistentStorage();
 		let index = this.#startIndex();
+		const colorSpace = getColorSpace();
 		while (this.#queue.length) {
 			const file = this.#queue.shift()!;
 			this.current = file.name;
 			try {
-				const processed = await processImageFile(file);
+				const processed = await processImageFile(file, colorSpace);
 				const photo: Photo = {
 					id: newId(),
 					name: file.name,
@@ -67,6 +69,7 @@ export class Importer {
 					workingWidth: processed.workingWidth,
 					workingHeight: processed.workingHeight,
 					capturedAt: processed.capturedAt,
+					exifDate: processed.exifDate,
 					importedAt: Date.now(),
 					importIndex: index++,
 					fileSize: file.size

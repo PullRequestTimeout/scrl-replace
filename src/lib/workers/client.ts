@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink';
+import type { ColorSpace } from '#lib/model/constants.ts';
 import type { ImageWorkerApi, ProcessedImage } from './image.worker.ts';
 import ImageWorker from './image.worker.ts?worker';
 
@@ -13,9 +14,12 @@ export function imageWorker(): Comlink.Remote<ImageWorkerApi> {
  * Process one picked file. Tries decoding in the worker first; if that fails (some formats
  * only decode on the main thread on older iOS), decodes here and transfers the bitmap.
  */
-export async function processImageFile(file: File): Promise<ProcessedImage> {
+export async function processImageFile(
+	file: File,
+	colorSpace: ColorSpace
+): Promise<ProcessedImage> {
 	try {
-		return await imageWorker().processFile(file);
+		return await imageWorker().processFile(file, colorSpace);
 	} catch (workerError) {
 		let bitmap: ImageBitmap;
 		try {
@@ -23,6 +27,6 @@ export async function processImageFile(file: File): Promise<ProcessedImage> {
 		} catch {
 			throw new Error(`Can't read ${file.name}`, { cause: workerError });
 		}
-		return imageWorker().processBitmap(Comlink.transfer(bitmap, [bitmap]), file);
+		return imageWorker().processBitmap(Comlink.transfer(bitmap, [bitmap]), file, colorSpace);
 	}
 }
