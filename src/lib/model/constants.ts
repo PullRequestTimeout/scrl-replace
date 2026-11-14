@@ -18,3 +18,6 @@ export const STORED_JPEG_QUALITY = 0.9;
 export const EXPORT_JPEG_QUALITY = 0.92;
 
 export type ImageVariant = 'working' | 'preview' | 'thumb';
+
+/** Canvas colour space for stored copies and exports. Chosen after the on-device colour test. */
+export type ColorSpace = 'srgb' | 'display-p3';
