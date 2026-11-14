@@ -14,9 +14,9 @@ export interface Crop {
 
 export const CENTRED: Crop = { fx: 0.5, fy: 0.5, zoom: 1 };
 
-/** Full-height background photo spanning strip pixels [x0, x1). */
+/** Full-height background photo spanning strip pixels [x0, x1). A null photo is an empty slot (hand-built layouts). */
 export interface Background {
-	photoId: PhotoId;
+	photoId: PhotoId | null;
 	x0: number;
 	x1: number;
 	crop: Crop;
@@ -131,5 +131,11 @@ export function slidesTouched(r: Rect): number[] {
 
 /** Every photo a carousel uses, in strip order. */
 export function photosIn(c: Carousel): PhotoId[] {
-	return [...c.backgrounds.map((b) => b.photoId), ...c.frames.map((f) => f.photoId)];
+	return [
+		...c.backgrounds.flatMap((b) => (b.photoId ? [b.photoId] : [])),
+		...c.frames.map((f) => f.photoId)
+	];
 }
+
+/** True when every background has a photo, so the carousel can be exported. */
+export const isComplete = (c: Carousel) => c.backgrounds.every((b) => b.photoId !== null);

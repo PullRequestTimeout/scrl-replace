@@ -1,35 +1,171 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { beforeNavigate } from '$app/navigation';
+	import { onDestroy } from 'svelte';
+	import Undo2Icon from '@lucide/svelte/icons/undo-2';
+	import Redo2Icon from '@lucide/svelte/icons/redo-2';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import { toast } from 'svelte-sonner';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
-	import CarouselStrip from '#lib/components/app/CarouselStrip.svelte';
 	import SlideCanvas from '#lib/components/app/SlideCanvas.svelte';
+	import EditorCanvas, { type Zoom } from '#lib/components/editor/EditorCanvas.svelte';
+	import EditorToolbar from '#lib/components/editor/EditorToolbar.svelte';
+	import PhotoTray from '#lib/components/editor/PhotoTray.svelte';
 	import { ProjectData } from '#lib/stores/project-data.svelte.ts';
 	import { loadPreviewSources } from '#lib/render/preview-cache.ts';
 	import type { DrawSource } from '#lib/render/draw.ts';
+	import type { Carousel } from '#lib/model/layout.ts';
 	import { photosIn } from '#lib/model/layout.ts';
+	import type { Photo, PhotoId } from '#lib/model/types.ts';
+	import { Editor } from '#lib/editor/editor.svelte.ts';
+	import { addFrame, replacePhoto, swapPhotos, type ElementRef } from '#lib/editor/ops.ts';
+	import { saveProject } from '#lib/storage/projects.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
 
-	const index = $derived(Math.max(0, Math.min(2, Number(page.params.n ?? '1') - 1)));
+	const index = Math.max(0, Math.min(2, Number(page.params.n ?? '1') - 1));
 	const data = new ProjectData(page.params.id ?? '');
-	let sources = $state(new Map<string, DrawSource>());
+
+	let editor = $state<Editor | null>(null);
+	let sources = $state(new Map<PhotoId, DrawSource>());
+	let zoom = $state<Zoom>('slide');
+	let centerX = $state(540);
+	let mode = $state<'edit' | 'preview'>('edit');
+	let tray = $state<
+		| null
+		| { kind: 'add' }
+		| { kind: 'replace'; ref: ElementRef }
+		| { kind: 'swap'; ref: ElementRef }
+	>(null);
 	let current = $state(0);
 	let scroller = $state<HTMLDivElement>();
+
+	const photoMap = $derived(new Map(data.photos.map((p) => [p.id, p])));
 
 	$effect(() => {
 		void (async () => {
 			await data.load();
 			const carousel = data.project?.carousels?.[index];
 			if (!carousel) return;
-			const ids = new Set(photosIn(carousel));
-			sources = await loadPreviewSources(data.photos.filter((p) => ids.has(p.id)));
+			editor = new Editor(structuredClone($state.snapshot(carousel)), scheduleSave);
+			// Decode every project photo once: replacing a photo should feel instant.
+			sources = await loadPreviewSources(data.photos);
 		})();
 	});
 
-	const carousel = $derived(data.project?.carousels?.[index] ?? null);
+	// ---------------------------------------------------------------------------
+	// Saving: debounced while editing, flushed when leaving or backgrounding the app.
+
+	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	let pending: Carousel | null = null;
+
+	function scheduleSave(c: Carousel) {
+		pending = c;
+		clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => void flush(), 500);
+	}
+
+	async function flush() {
+		clearTimeout(saveTimer);
+		const c = pending;
+		const project = data.project;
+		if (!c || !project?.carousels) return;
+		pending = null;
+		const carousels = $state.snapshot(project.carousels) as [Carousel, Carousel, Carousel];
+		carousels[index] = $state.snapshot(c) as Carousel;
+		try {
+			data.project = await saveProject({ ...$state.snapshot(project), carousels });
+		} catch (e) {
+			console.error(e);
+			toast.error('Couldn’t save changes');
+		}
+	}
+
+	function onHidden() {
+		if (document.visibilityState === 'hidden') void flush();
+	}
+	$effect(() => {
+		document.addEventListener('visibilitychange', onHidden);
+		window.addEventListener('pagehide', flush);
+		return () => {
+			document.removeEventListener('visibilitychange', onHidden);
+			window.removeEventListener('pagehide', flush);
+		};
+	});
+	beforeNavigate(() => void flush());
+	onDestroy(() => void flush());
+
+	// ---------------------------------------------------------------------------
+	// Photo tray
+
+	const usage = $derived.by(() => {
+		const map = new Map<PhotoId, string>();
+		const carousels = data.project?.carousels;
+		if (!carousels) return map;
+		carousels.forEach((c, i) => {
+			if (i === index) return;
+			for (const id of photosIn(c)) map.set(id, `Carousel ${i + 1}`);
+		});
+		if (editor) for (const id of photosIn(editor.carousel)) map.set(id, 'Here');
+		return map;
+	});
+
+	const aspectOf = (id: PhotoId) => {
+		const p = photoMap.get(id);
+		return p ? p.width / p.height : 1;
+	};
+
+	function pick(photo: Photo) {
+		const t = tray;
+		tray = null;
+		if (!editor || !t) return;
+		const aspect = photo.width / photo.height;
+		if (t.kind === 'add') {
+			editor.apply(addFrame(editor.carousel, photo.id, aspect, centerX));
+			const added = editor.carousel.frames.at(-1);
+			if (added) editor.select({ kind: 'frame', id: added.id });
+		} else if (t.kind === 'replace') {
+			editor.apply(replacePhoto(editor.carousel, t.ref, photo.id, aspect));
+		} else {
+			// Swap with whichever element in this carousel uses the picked photo.
+			const c = editor.carousel;
+			const fi = c.frames.find((f) => f.photoId === photo.id);
+			const bi = c.backgrounds.findIndex((b) => b.photoId === photo.id);
+			const other: ElementRef | null = fi
+				? { kind: 'frame', id: fi.id }
+				: bi >= 0
+					? { kind: 'bg', index: bi }
+					: null;
+			if (!other) {
+				toast('Pick a photo that’s already in this carousel to swap with');
+				return;
+			}
+			editor.apply(swapPhotos(c, t.ref, other, aspectOf));
+		}
+	}
+
+	const trayPhotos = $derived.by(() => {
+		if (tray?.kind !== 'swap' || !editor) return data.photos;
+		const here = new Set(photosIn(editor.carousel));
+		return data.photos.filter((p) => here.has(p.id));
+	});
+
+	const trayTitle = $derived(
+		tray?.kind === 'add'
+			? 'Add a framed photo'
+			: tray?.kind === 'swap'
+				? 'Swap with…'
+				: 'Choose a photo'
+	);
+
+	function zoomTo(x: number) {
+		centerX = x;
+		zoom = 'slide';
+	}
 
 	function onScroll() {
-		if (!scroller) return;
-		current = Math.round(scroller.scrollLeft / scroller.clientWidth);
+		if (scroller) current = Math.round(scroller.scrollLeft / scroller.clientWidth);
 	}
 </script>
 
@@ -37,39 +173,120 @@
 	title="Carousel {index + 1} · {TILE_NAMES[index]} tile"
 	backHref="/p/{page.params.id}"
 	backLabel="Project"
-/>
+>
+	{#snippet actions()}
+		{#if editor && mode === 'edit'}
+			<Button
+				variant="ghost"
+				size="icon"
+				disabled={!editor.canUndo}
+				onclick={() => editor?.undo()}
+				aria-label="Undo"
+			>
+				<Undo2Icon />
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
+				disabled={!editor.canRedo}
+				onclick={() => editor?.redo()}
+				aria-label="Redo"
+			>
+				<Redo2Icon />
+			</Button>
+		{/if}
+		<Button
+			variant="ghost"
+			size="icon"
+			onclick={() => (mode = mode === 'edit' ? 'preview' : 'edit')}
+			aria-label={mode === 'edit' ? 'Preview slides' : 'Back to editing'}
+		>
+			{#if mode === 'edit'}<EyeIcon />{:else}<PencilIcon />{/if}
+		</Button>
+	{/snippet}
+</AppHeader>
 
-<main class="mx-auto flex max-w-xl flex-col gap-4 py-4">
-	{#if carousel}
-		<!-- Swipe through slides as they'll appear on Instagram. -->
+{#if editor && mode === 'edit'}
+	<main class="mx-auto flex max-w-xl flex-col pb-72">
+		<div class="flex items-center justify-between px-4 py-2">
+			<div class="flex rounded-md border p-0.5 text-xs" role="group" aria-label="Zoom">
+				<button
+					type="button"
+					class="rounded px-2 py-1 {zoom === 'overview'
+						? 'bg-secondary text-foreground'
+						: 'text-muted-foreground'}"
+					aria-pressed={zoom === 'overview'}
+					onclick={() => (zoom = 'overview')}>Whole strip</button
+				>
+				<button
+					type="button"
+					class="rounded px-2 py-1 {zoom === 'slide'
+						? 'bg-secondary text-foreground'
+						: 'text-muted-foreground'}"
+					aria-pressed={zoom === 'slide'}
+					onclick={() => (zoom = 'slide')}>Slide</button
+				>
+			</div>
+			<span class="text-xs text-muted-foreground tabular-nums">
+				{editor.carousel.slideCount} slides
+			</span>
+		</div>
+
+		<EditorCanvas
+			{editor}
+			photos={photoMap}
+			{sources}
+			{zoom}
+			bind:centerX
+			onEmptyTap={(i) => (tray = { kind: 'replace', ref: { kind: 'bg', index: i } })}
+			onZoomTo={zoomTo}
+		/>
+		{#if zoom === 'overview'}
+			<p class="px-4 pt-2 text-xs text-muted-foreground">Tap a slide to zoom in and edit.</p>
+		{/if}
+	</main>
+
+	<div
+		class="fixed inset-x-0 bottom-0 z-10 border-t bg-background/95 backdrop-blur"
+		style="padding-bottom: env(safe-area-inset-bottom)"
+	>
+		<div class="mx-auto max-w-xl">
+			<EditorToolbar
+				{editor}
+				photos={photoMap}
+				onAddFrame={() => (tray = { kind: 'add' })}
+				onReplace={() => editor?.selection && (tray = { kind: 'replace', ref: editor.selection })}
+				onSwap={() => editor?.selection && (tray = { kind: 'swap', ref: editor.selection })}
+			/>
+		</div>
+	</div>
+
+	<PhotoTray
+		open={tray !== null}
+		title={trayTitle}
+		photos={trayPhotos}
+		{usage}
+		onPick={pick}
+		onClose={() => (tray = null)}
+	/>
+{:else if editor && mode === 'preview'}
+	<main class="mx-auto flex max-w-xl flex-col gap-3 py-4">
 		<div
 			bind:this={scroller}
 			onscroll={onScroll}
 			class="flex snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto overscroll-x-contain"
 			aria-label="Slides"
 		>
-			{#each { length: carousel.slideCount }, slide (slide)}
+			{#each { length: editor.carousel.slideCount }, slide (slide)}
 				<div class="w-full shrink-0 snap-center">
-					<SlideCanvas {carousel} {sources} {slide} />
+					<SlideCanvas carousel={editor.carousel} {sources} {slide} />
 				</div>
 			{/each}
 		</div>
-		<div class="flex justify-center gap-1.5" aria-hidden="true">
-			{#each { length: carousel.slideCount }, slide (slide)}
-				<span class="size-1.5 rounded-full {slide === current ? 'bg-foreground' : 'bg-muted'}"
-				></span>
-			{/each}
-		</div>
 		<p class="text-center text-xs text-muted-foreground" aria-live="polite">
-			Slide {current + 1} of {carousel.slideCount}
+			Slide {current + 1} of {editor.carousel.slideCount}
 		</p>
-
-		<section class="flex flex-col gap-2 px-4">
-			<h2 class="text-sm font-medium">Whole strip</h2>
-			<CarouselStrip {carousel} {sources} slideWidth={72} />
-			<p class="text-xs text-muted-foreground">Editing arrives in Phase 3.</p>
-		</section>
-	{:else if data.loaded}
-		<p class="p-6 text-sm text-muted-foreground">This carousel doesn’t exist yet.</p>
-	{/if}
-</main>
+	</main>
+{:else if data.loaded}
+	<p class="p-6 text-sm text-muted-foreground">This carousel doesn’t exist yet.</p>
+{/if}

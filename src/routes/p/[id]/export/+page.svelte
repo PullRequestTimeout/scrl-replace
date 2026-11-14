@@ -10,7 +10,7 @@
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import { ProjectData } from '#lib/stores/project-data.svelte.ts';
 	import { imageWorker } from '#lib/workers/client.ts';
-	import { photosIn } from '#lib/model/layout.ts';
+	import { isComplete, photosIn } from '#lib/model/layout.ts';
 	import { getColorSpace } from '#lib/settings.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
 	import {
@@ -142,6 +142,11 @@
 				</h2>
 				<span class="text-xs text-muted-foreground">{item.files.length} slides</span>
 			</div>
+			{#if data.project?.carousels && !isComplete(data.project.carousels[item.carouselIndex])}
+				<p class="text-xs text-amber-500">
+					This carousel still has empty backgrounds; they export as grey.
+				</p>
+			{/if}
 			<div class="flex [scrollbar-width:none] gap-1 overflow-x-auto">
 				{#each item.urls as url, slide (url)}
 					<img

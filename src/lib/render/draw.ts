@@ -59,7 +59,7 @@ export function drawCarousel(
 	for (const bg of carousel.backgrounds) {
 		const r = backgroundRect(bg);
 		if (!intersects(r, x0, x1)) continue;
-		drawPhoto(ctx, lookup(bg.photoId), r, bg.crop, placeholder, scale);
+		drawPhoto(ctx, bg.photoId ? lookup(bg.photoId) : undefined, r, bg.crop, placeholder, scale);
 	}
 
 	for (const frame of carousel.frames) {

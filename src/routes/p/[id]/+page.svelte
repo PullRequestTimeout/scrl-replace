@@ -12,6 +12,9 @@
 	import type { DrawSource } from '#lib/render/draw.ts';
 	import { photosIn } from '#lib/model/layout.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
+	import { blankCarousel } from '#lib/editor/ops.ts';
+	import { saveProject } from '#lib/storage/projects.ts';
+	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
 
 	const data = new ProjectData(page.params.id ?? '');
 	let sources = $state(new Map<string, DrawSource>());
@@ -26,6 +29,14 @@
 			sources = await loadPreviewSources(data.photos.filter((p) => ids.has(p.id)));
 		})();
 	});
+
+	async function buildByHand() {
+		if (!data.project) return;
+		data.project = await saveProject({
+			...$state.snapshot(data.project),
+			carousels: [blankCarousel(), blankCarousel(), blankCarousel()]
+		});
+	}
 
 	const project = $derived(data.project);
 	const carousels = $derived(project?.carousels ?? null);
@@ -103,8 +114,12 @@
 			<section class="mx-4 flex flex-col gap-2 rounded-lg border bg-card p-4 text-sm">
 				<h2 class="font-medium">No carousels yet</h2>
 				<p class="text-muted-foreground">
-					{data.photos.length} photos imported. Grid row and carousel suggestions arrive in Phase 4.
+					{data.photos.length} photos imported. Suggestions arrive in Phase 4; for now you can lay out
+					the three carousels yourself.
 				</p>
+				<Button class="mt-1" disabled={data.photos.length === 0} onclick={buildByHand}>
+					<PencilRulerIcon /> Build by hand
+				</Button>
 			</section>
 		{/if}
 	{/if}

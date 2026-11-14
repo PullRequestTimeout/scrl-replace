@@ -1,6 +1,6 @@
 # SCRL Replacement: Build Plan
 
-Status: **Phases 1–2 built. Phase 2 waiting for the on-iPhone check (export to Photos, colour test).**
+Status: **Phases 1–3 built. Exports at 2x (2160×2700), sRGB. Phase 3 waiting for the on-iPhone check.**
 
 ## 1. Goal
 
