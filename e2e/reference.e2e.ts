@@ -40,6 +40,15 @@ test('rebuilds and exports the reference carousels', async ({ page }) => {
 	await page.getByRole('link', { name: 'Export' }).click();
 	await expect(page.getByRole('heading', { name: /^Post 3/ })).toBeVisible({ timeout: 60_000 });
 	await expect(page.locator('main img')).toHaveCount(4 + 6 + 5);
+	// Exports are rendered at 2x: 2160x2700.
+	const size = await page
+		.locator('main img')
+		.first()
+		.evaluate(async (img: HTMLImageElement) => {
+			await img.decode();
+			return [img.naturalWidth, img.naturalHeight];
+		});
+	expect(size).toEqual([2160, 2700]);
 
 	// No share sheet in desktop Chromium, so the button falls back to downloads.
 	mkdirSync(OUT, { recursive: true });

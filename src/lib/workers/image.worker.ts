@@ -4,6 +4,7 @@ import exifr from 'exifr/dist/lite.esm.mjs';
 import { downscaleSteps, fitWithin, type Size } from '#lib/images/geometry.ts';
 import {
 	EXPORT_JPEG_QUALITY,
+	EXPORT_SCALE,
 	PREVIEW_LONG_EDGE,
 	SLIDE_H,
 	SLIDE_W,
@@ -197,7 +198,7 @@ function photosOnSlide(carousel: Carousel, slide: number): PhotoId[] {
 	return [
 		...carousel.backgrounds
 			.filter((b) => intersects(backgroundRect(b), x0, x1))
-			.map((b) => b.photoId),
+			.flatMap((b) => (b.photoId ? [b.photoId] : [])),
 		...carousel.frames.filter((f) => intersects(frameOuter(f), x0, x1)).map((f) => f.photoId)
 	];
 }
@@ -223,7 +224,7 @@ const api = {
 	},
 
 	/**
-	 * Render every slide of a carousel at 1080×1350 from the working copies, one slide at a
+	 * Render every slide of a carousel at EXPORT_SCALE × 1080×1350 from the working copies, one slide at a
 	 * time on a single canvas. Returns JPEGs in slide order.
 	 */
 	async renderCarousel(
@@ -233,8 +234,10 @@ const api = {
 		quality = EXPORT_JPEG_QUALITY
 	): Promise<Blob[]> {
 		const sizes = new Map(photos.map((p) => [p.id, p]));
-		const cache = new BitmapLru(4);
-		const [canvas, ctx] = makeCanvas({ width: SLIDE_W, height: SLIDE_H }, colorSpace);
+		// 4096px working copies are ~45 MB decoded: keep only a few alive at once.
+		const cache = new BitmapLru(3);
+		const outSize = { width: SLIDE_W * EXPORT_SCALE, height: SLIDE_H * EXPORT_SCALE };
+		const [canvas, ctx] = makeCanvas(outSize, colorSpace);
 		const blobs: Blob[] = [];
 		try {
 			for (let slide = 0; slide < carousel.slideCount; slide++) {
@@ -252,10 +255,10 @@ const api = {
 					});
 				}
 				ctx.fillStyle = '#000';
-				ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
+				ctx.fillRect(0, 0, outSize.width, outSize.height);
 				drawCarousel(ctx, carousel, (id) => sources.get(id), {
 					originX: slide * SLIDE_W,
-					scale: 1
+					scale: EXPORT_SCALE
 				});
 				blobs.push(await toJpeg(canvas, quality));
 			}

@@ -10,14 +10,21 @@ export const GRID_HIDDEN_SIDE = (SLIDE_W - GRID_VISIBLE_W) / 2; // 33.75
 export const SPLIT_SOURCE_W = GRID_VISIBLE_W * 3 + GRID_HIDDEN_SIDE * 2; // 3105
 
 /** Stored image sizes (long edge, px). */
-export const WORKING_LONG_EDGE = 3200;
+/** Big enough for a background spanning 2 slides at the 2x export size (2 x 2160 = 4320 wide, cropped). */
+export const WORKING_LONG_EDGE = 4096;
 export const PREVIEW_LONG_EDGE = 1024;
 export const THUMB_LONG_EDGE = 256;
 
 export const STORED_JPEG_QUALITY = 0.9;
 export const EXPORT_JPEG_QUALITY = 0.92;
 
+/**
+ * Exports are rendered at 2x (2160x2700). Instagram downsizes them itself, which keeps more
+ * detail than uploading at exactly 1080x1350. Layout coordinates stay in 1080-wide space.
+ */
+export const EXPORT_SCALE = 2;
+
 export type ImageVariant = 'working' | 'preview' | 'thumb';
 
-/** Canvas colour space for stored copies and exports. Chosen after the on-device colour test. */
+/** Canvas colour space for stored copies and exports. sRGB won the on-device colour test. */
 export type ColorSpace = 'srgb' | 'display-p3';
