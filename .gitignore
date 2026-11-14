@@ -1,0 +1,35 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+# Playwright
+test-results
+
+# private photo sets (real people) — never commit
+example-gallery/
+og-gallery/
+fixtures/generated/
+
+# PWA dev output
+dev-dist/
+playwright-report/
+.playwright-mcp/
