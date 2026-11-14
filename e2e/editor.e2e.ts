@@ -68,8 +68,9 @@ test('builds a carousel by hand: fill, add frame, drag, undo/redo, crop, add sli
 	await expect(page.getByRole('dialog')).toBeHidden();
 	await expect.poll(async () => (await savedCarousel(page))?.backgrounds[0].photoId).toBeTruthy();
 
-	// Deselect, then add a frame.
-	await page.getByRole('button', { name: 'Deselect' }).click();
+	// Deselect by tapping the empty space below the strip, then add a frame.
+	await page.mouse.click(cx, box.y + box.height + 60);
+	await expect(page.getByRole('button', { name: 'Deselect' })).toBeHidden();
 	await page.getByRole('button', { name: 'Add frame' }).click();
 	await page.getByRole('dialog').getByRole('button').nth(1).click();
 	await expect(page.getByRole('dialog')).toBeHidden();

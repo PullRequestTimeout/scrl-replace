@@ -159,6 +159,15 @@
 				: 'Choose a photo'
 	);
 
+	/**
+	 * Tapping empty space around the strip deselects (and leaves crop mode). Taps on the strip
+	 * itself are handled by the canvas, and controls keep their own behaviour.
+	 */
+	function onBackdropClick(e: MouseEvent) {
+		if ((e.target as Element).closest('[role="application"], button, a, input')) return;
+		editor?.select(null);
+	}
+
 	function zoomTo(x: number) {
 		centerX = x;
 		zoom = 'slide';
@@ -207,7 +216,11 @@
 </AppHeader>
 
 {#if editor && mode === 'edit'}
-	<main class="mx-auto flex max-w-xl flex-col pb-72">
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+	<main
+		class="mx-auto flex min-h-[calc(100dvh-3rem)] max-w-xl flex-col pb-72"
+		onclick={onBackdropClick}
+	>
 		<div class="flex items-center justify-between px-4 py-2">
 			<div class="flex rounded-md border p-0.5 text-xs" role="group" aria-label="Zoom">
 				<button
