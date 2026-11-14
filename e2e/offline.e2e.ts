@@ -4,7 +4,7 @@ test.use({ viewport: { width: 393, height: 852 }, serviceWorkers: 'allow' });
 
 test('installs the service worker and works offline', async ({ page, context }) => {
 	await page.goto('/');
-	await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
 
 	// Wait until the service worker has precached the app. With the update prompt
 	// (no clients.claim), it only controls pages loaded after it activates.
