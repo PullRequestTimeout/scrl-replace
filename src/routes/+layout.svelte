@@ -12,5 +12,11 @@
 	{@render children()}
 </div>
 
-<Toaster position="top-center" />
+<!-- In the installed app the page runs under the status bar (black-translucent), so toasts
+     must clear the safe area or they render behind the notch / Dynamic Island. -->
+<Toaster
+	position="top-center"
+	offset={{ top: 'calc(env(safe-area-inset-top) + 16px)' }}
+	mobileOffset={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+/>
 <ReloadPrompt />
