@@ -129,7 +129,13 @@
 				<span class="px-4 text-xs text-muted-foreground">
 					{layout.slideCount} slides · {layout.frames.length} framed
 				</span>
-				<span class="block px-4"><CarouselStrip carousel={layout} {sources} slideWidth={84} /></span
+				<span class="block px-4"
+					><CarouselStrip
+						carousel={layout}
+						{sources}
+						slideWidth={84}
+						emptyFill={data.emptyFill}
+					/></span
 				>
 			</button>
 		{/each}

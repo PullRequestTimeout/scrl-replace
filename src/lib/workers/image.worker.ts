@@ -311,7 +311,8 @@ const api = {
 		carousel: Carousel,
 		photos: PhotoSize[],
 		colorSpace: ColorSpace = 'srgb',
-		quality = EXPORT_JPEG_QUALITY
+		quality = EXPORT_JPEG_QUALITY,
+		emptyFill = '#ffffff'
 	): Promise<Blob[]> {
 		const sizes = new Map(photos.map((p) => [p.id, p]));
 		// 4096px working copies are ~45 MB decoded: keep only a few alive at once.
@@ -338,7 +339,8 @@ const api = {
 				ctx.fillRect(0, 0, outSize.width, outSize.height);
 				drawCarousel(ctx, carousel, (id) => sources.get(id), {
 					originX: slide * SLIDE_W,
-					scale: EXPORT_SCALE
+					scale: EXPORT_SCALE,
+					emptyFill
 				});
 				blobs.push(await toJpeg(canvas, quality));
 			}

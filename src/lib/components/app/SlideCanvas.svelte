@@ -11,9 +11,10 @@
 		slide: number;
 		class?: string;
 		label?: string;
+		emptyFill?: string;
 	}
 
-	let { carousel, sources, slide, class: className, label }: Props = $props();
+	let { carousel, sources, slide, class: className, label, emptyFill }: Props = $props();
 
 	let canvas = $state<HTMLCanvasElement>();
 	let cssWidth = $state(0);
@@ -31,7 +32,8 @@
 		if (!ctx) return;
 		drawCarousel(ctx, carousel, (id) => sources.get(id), {
 			originX: slide * SLIDE_W,
-			scale: width / SLIDE_W
+			scale: width / SLIDE_W,
+			emptyFill
 		});
 	});
 </script>

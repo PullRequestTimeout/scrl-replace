@@ -326,6 +326,7 @@
 			photos={photoMap}
 			{sources}
 			{zoom}
+			emptyFill={data.emptyFill}
 			bind:centerX
 			onEmptyTap={(i) => openTray({ kind: 'replace', ref: { kind: 'bg', index: i } })}
 			onZoomTo={zoomTo}
@@ -370,7 +371,7 @@
 		>
 			{#each { length: editor.carousel.slideCount }, slide (slide)}
 				<div class="w-full shrink-0 snap-center">
-					<SlideCanvas carousel={editor.carousel} {sources} {slide} />
+					<SlideCanvas carousel={editor.carousel} {sources} {slide} emptyFill={data.emptyFill} />
 				</div>
 			{/each}
 		</div>

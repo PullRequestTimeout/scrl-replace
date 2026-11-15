@@ -16,6 +16,9 @@ export class ProjectData {
 	/** Reference projects only: photos still to import. */
 	referenceMissing = $state<ReferencePhoto[]>([]);
 
+	/** Fill for empty carousel backgrounds, from the project's style preset. */
+	emptyFill = $state('#ffffff');
+
 	#id: ProjectId;
 
 	constructor(id: ProjectId) {
@@ -31,8 +34,14 @@ export class ProjectData {
 		}
 		this.photos = await getPhotos(project.photoIds);
 		this.project = project;
+		await this.refreshPreset();
 		if (project.kind === 'reference') await this.syncReference();
 		this.loaded = true;
+	}
+
+	/** Re-read the project's style preset (call after the project's style changes). */
+	async refreshPreset() {
+		this.emptyFill = (await getPreset(this.project?.presetId)).emptyBackground;
 	}
 
 	/** Photos analysed so far / needing analysis, for progress display. */

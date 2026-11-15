@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { GRID_HIDDEN_SIDE, SLIDE_H, SLIDE_W } from '#lib/model/constants.ts';
+	import { HEX_COLOUR } from '#lib/model/presets.ts';
 	import {
 		backgroundRect,
 		frameInner,
@@ -39,6 +40,7 @@
 		onZoomTo: (x: number) => void;
 		/** Strip x at the centre of the view, kept in sync for "add here" actions. */
 		centerX?: number;
+		emptyFill?: string;
 	}
 
 	let {
@@ -49,7 +51,8 @@
 		showGuides = true,
 		onEmptyTap,
 		onZoomTo,
-		centerX = $bindable(0)
+		centerX = $bindable(0),
+		emptyFill
 	}: Props = $props();
 
 	let canvas = $state<HTMLCanvasElement>();
@@ -137,7 +140,8 @@
 		ctx.fillRect(0, 0, pw, ph);
 		drawCarousel(ctx, carousel, (id) => sources.get(id), {
 			originX,
-			scale: scale * dpr
+			scale: scale * dpr,
+			emptyFill
 		});
 	});
 
@@ -515,6 +519,17 @@
 		else if (cssX > cw - edge) setOrigin(originX + 12 / scale);
 	}
 
+	// Hint text and outline on empty backgrounds: black or white, whichever contrasts more with
+	// the fill (WCAG relative luminance; black wins above L ≈ 0.179).
+	const emptyInk = $derived.by(() => {
+		const fill = emptyFill && HEX_COLOUR.test(emptyFill) ? emptyFill : '#ffffff';
+		const [r, g, b] = [1, 3, 5].map((i) => {
+			const c = parseInt(fill.slice(i, i + 2), 16) / 255;
+			return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+		});
+		const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179;
+		return { rgb: dark ? '0 0 0' : '255 255 255', outline: dark ? 0.55 : 0.45 };
+	});
 	const emptyRects = $derived(
 		carousel.backgrounds
 			.map((b, index) => ({ b, index }))
@@ -574,7 +589,7 @@
 				width={Math.max(0, r.w - 8)}
 				height={Math.max(0, r.h - 8)}
 				fill="none"
-				stroke="rgb(255 255 255 / 0.4)"
+				stroke="rgb({emptyInk.rgb} / {emptyInk.outline})"
 				stroke-dasharray="6 6"
 				rx="6"
 			/>
@@ -583,7 +598,7 @@
 					x={r.x + r.w / 2}
 					y={r.y + r.h / 2 - 10}
 					text-anchor="middle"
-					fill="rgb(255 255 255 / 0.9)"
+					fill="rgb({emptyInk.rgb} / 0.9)"
 					font-size="15"
 					font-weight="600"
 				>
@@ -593,7 +608,7 @@
 					x={r.x + r.w / 2}
 					y={r.y + r.h / 2 + 12}
 					text-anchor="middle"
-					fill="rgb(255 255 255 / 0.65)"
+					fill="rgb({emptyInk.rgb} / 0.8)"
 					font-size="13"
 				>
 					{index === 0 ? 'Tap to choose a portrait photo' : 'Tap to choose a photo'}

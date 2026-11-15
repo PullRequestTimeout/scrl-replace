@@ -43,6 +43,7 @@
 	async function choosePreset(id: string) {
 		if (!data.project || id === data.project.presetId) return;
 		data.project = await saveProject({ ...$state.snapshot(data.project), presetId: id });
+		await data.refreshPreset();
 		const name = presets.find((p) => p.id === id)?.name;
 		if (name) toast.success(`New suggestions will use “${name}”`);
 	}
@@ -141,7 +142,7 @@
 						>
 					</div>
 				</div>
-				<GridRowPreview {carousels} {sources} mode={rowMode} />
+				<GridRowPreview {carousels} {sources} mode={rowMode} emptyFill={data.emptyFill} />
 			</section>
 
 			<section class="flex flex-col gap-3">
@@ -168,7 +169,7 @@
 							<ChevronRightIcon class="size-4" aria-hidden="true" />
 						</div>
 						<div class="px-4">
-							<CarouselStrip {carousel} {sources} slideWidth={88} />
+							<CarouselStrip {carousel} {sources} slideWidth={88} emptyFill={data.emptyFill} />
 						</div>
 					</a>
 				{/each}

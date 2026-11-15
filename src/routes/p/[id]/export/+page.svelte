@@ -49,6 +49,7 @@
 			return;
 		}
 		const colorSpace = getColorSpace();
+		const emptyFill = (await data.preset()).emptyBackground;
 		total = carousels.reduce((n, c) => n + c.slideCount, 0);
 		try {
 			// Render in posting order so the first post is ready first.
@@ -58,7 +59,13 @@
 				const sizes = data.photos
 					.filter((p) => ids.has(p.id))
 					.map((p) => ({ id: p.id, width: p.width, height: p.height }));
-				const blobs = await imageWorker().renderCarousel(carousel, sizes, colorSpace);
+				const blobs = await imageWorker().renderCarousel(
+					carousel,
+					sizes,
+					colorSpace,
+					undefined,
+					emptyFill
+				);
 				const postNumber = postIndex + 1;
 				const files = blobs.map(
 					(b, slide) => new File([b], slideFileName(postNumber, slide), { type: 'image/jpeg' })

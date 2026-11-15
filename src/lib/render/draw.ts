@@ -33,6 +33,8 @@ export interface DrawOptions {
 	scale: number;
 	/** Fill used where an image isn't loaded yet. */
 	placeholder?: string;
+	/** Fill for backgrounds with no photo (the style's empty background colour). */
+	emptyFill?: string;
 	borderColor?: string;
 }
 
@@ -46,7 +48,13 @@ export function drawCarousel(
 	lookup: SourceLookup,
 	opts: DrawOptions
 ) {
-	const { originX, scale, placeholder = '#262626', borderColor = '#ffffff' } = opts;
+	const {
+		originX,
+		scale,
+		placeholder = '#262626',
+		emptyFill = '#ffffff',
+		borderColor = '#ffffff'
+	} = opts;
 	const viewW = ctx.canvas.width / scale;
 	const x0 = originX;
 	const x1 = originX + viewW;
@@ -59,7 +67,14 @@ export function drawCarousel(
 	for (const bg of carousel.backgrounds) {
 		const r = backgroundRect(bg);
 		if (!intersects(r, x0, x1)) continue;
-		drawPhoto(ctx, bg.photoId ? lookup(bg.photoId) : undefined, r, bg.crop, placeholder, scale);
+		drawPhoto(
+			ctx,
+			bg.photoId ? lookup(bg.photoId) : undefined,
+			r,
+			bg.crop,
+			bg.photoId ? placeholder : emptyFill,
+			scale
+		);
 	}
 
 	for (const frame of carousel.frames) {

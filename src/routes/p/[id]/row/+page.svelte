@@ -265,7 +265,11 @@
 						onpointerup={onAdjustUp}
 						onpointercancel={onAdjustUp}
 					>
-						<GridRowPreview carousels={previewOf(option.row)} {sources} />
+						<GridRowPreview
+							carousels={previewOf(option.row)}
+							{sources}
+							emptyFill={data.emptyFill}
+						/>
 					</div>
 					<p class="px-4 text-xs text-muted-foreground">
 						{option.row.mode === 'split'

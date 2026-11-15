@@ -20,6 +20,8 @@ export interface StylePreset {
 	frameMargin: number;
 	/** Minimum gap between frames, as a fraction of a slide. */
 	frameGap: number;
+	/** Fill for backgrounds left without a photo, so frames can stand alone on a plain slide. */
+	emptyBackground: string;
 	weights: ScoreWeights;
 }
 
@@ -66,6 +68,7 @@ export const DEFAULT_PRESET: StylePreset = {
 	joinClearance: 120,
 	frameMargin: 40,
 	frameGap: 0.3,
+	emptyBackground: '#ffffff',
 	weights: {
 		joinCovered: 2,
 		joinNearEdge: 3,
@@ -102,6 +105,7 @@ export const NUMBER_LIMITS: Record<NumberKey, { min: number; max: number; step: 
 	frameGap: { min: 0, max: 1, step: 0.05 }
 };
 export const WEIGHT_LIMITS = { min: 0, max: 5, step: 0.25 };
+export const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number) =>
 	typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
@@ -115,6 +119,10 @@ export function normalizePreset(raw: Partial<StylePreset> & { id: string }): Sty
 	const out: StylePreset = structuredClone(d);
 	out.id = raw.id;
 	out.name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : d.name;
+	out.emptyBackground =
+		typeof raw.emptyBackground === 'string' && HEX_COLOUR.test(raw.emptyBackground)
+			? raw.emptyBackground.toLowerCase()
+			: d.emptyBackground;
 	for (const key of Object.keys(NUMBER_LIMITS) as NumberKey[]) {
 		const { min, max } = NUMBER_LIMITS[key];
 		out[key] = clamp(raw[key], min, max, d[key]);

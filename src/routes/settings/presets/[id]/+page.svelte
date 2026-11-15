@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import { toast } from 'svelte-sonner';
@@ -131,6 +132,20 @@
 			fmt: px
 		}
 	];
+	const EMPTY_SWATCHES = [
+		{ value: '#ffffff', label: 'White' },
+		{ value: '#000000', label: 'Black' }
+	];
+	let customInput = $state<HTMLInputElement>();
+	const isCustomEmpty = (p: StylePreset) =>
+		!EMPTY_SWATCHES.some((s) => s.value === p.emptyBackground);
+
+	function setEmptyBackground(p: StylePreset, value: string) {
+		if (readOnly || p.emptyBackground === value.toLowerCase()) return;
+		p.emptyBackground = value.toLowerCase();
+		void save();
+	}
+
 	const WEIGHTS: { key: WeightKey; label: string }[] = [
 		{ key: 'contrast', label: 'Contrast between a frame and its background' },
 		{ key: 'joinCovered', label: 'Hide joins under frames' },
@@ -210,6 +225,60 @@
 	</div>
 {/snippet}
 
+{#snippet emptyBackgroundRow(p: StylePreset)}
+	{@const option =
+		'flex h-11 min-w-11 items-center gap-2 rounded-md border px-3 text-sm has-checked:border-primary has-checked:ring-2 has-checked:ring-primary has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring has-disabled:opacity-50 active:bg-accent'}
+	{@const chip = 'size-5 shrink-0 rounded-sm ring-1 ring-foreground/25'}
+	<fieldset class="flex flex-col gap-2" disabled={readOnly} aria-describedby="empty-bg-desc">
+		<legend class="text-sm">Empty background colour</legend>
+		<p id="empty-bg-desc" class="-mt-2 text-xs text-muted-foreground">
+			Shown where a background has no photo, so a frame can sit on a plain slide
+		</p>
+		<div class="flex flex-wrap items-center gap-2">
+			{#each EMPTY_SWATCHES as s (s.value)}
+				{@const checked = p.emptyBackground === s.value}
+				<label class={option}>
+					<input
+						type="radio"
+						name="empty-bg"
+						class="sr-only"
+						{checked}
+						onchange={() => setEmptyBackground(p, s.value)}
+					/>
+					<span class={chip} style:background-color={s.value}></span>
+					{s.label}
+					{#if checked}<CheckIcon class="size-4" aria-hidden="true" />{/if}
+				</label>
+			{/each}
+			<label class={option}>
+				<!-- Choosing "Custom" opens the colour sheet; the colour saves when it closes. -->
+				<input
+					type="radio"
+					name="empty-bg"
+					class="sr-only"
+					checked={isCustomEmpty(p)}
+					onchange={() => customInput?.click()}
+				/>
+				<input
+					bind:this={customInput}
+					type="color"
+					aria-label="Custom colour"
+					tabindex="-1"
+					class="size-6 cursor-pointer rounded-sm border-0 bg-transparent p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-foreground/25 [&::-webkit-color-swatch-wrapper]:p-0"
+					value={p.emptyBackground}
+					oninput={(e) => (p.emptyBackground = e.currentTarget.value.toLowerCase())}
+					onchange={(e) => {
+						p.emptyBackground = e.currentTarget.value.toLowerCase();
+						void save();
+					}}
+				/>
+				Custom
+				{#if isCustomEmpty(p)}<CheckIcon class="size-4" aria-hidden="true" />{/if}
+			</label>
+		</div>
+	</fieldset>
+{/snippet}
+
 <AppHeader title={preset?.name ?? 'Style'} backHref="/settings/presets" backLabel="Styles" />
 
 <main class="mx-auto flex max-w-xl flex-col gap-4 p-4 pb-12">
@@ -261,6 +330,7 @@
 			<h2 class="font-medium">Backgrounds</h2>
 			{#each BG_RANGES as row (row.key)}{@render rangeRow(preset, row)}{/each}
 			{#each BG_NUMBERS as row (row.key)}{@render numberRow(preset, row)}{/each}
+			{@render emptyBackgroundRow(preset)}
 		</section>
 
 		<section class="flex flex-col gap-5 rounded-lg border bg-card p-4">
