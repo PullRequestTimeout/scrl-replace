@@ -6,14 +6,19 @@
 import textEmbeddings from './text-embeddings.json';
 
 export type AiBackend = 'webgpu' | 'wasm';
-export type AiPrecision = 'fp16' | 'fp32';
 
-const MODEL_BASE = `https://huggingface.co/${textEmbeddings.model}/resolve/${textEmbeddings.revision}/onnx`;
+/** Bump when the model, prompts or scoring change, so stored results are recomputed. */
+export const SUBJECT_VERSION = 1;
 
-export const MODEL_URLS: Record<AiPrecision, string> = {
-	fp16: `${MODEL_BASE}/vision_model_fp16.onnx`,
-	fp32: `${MODEL_BASE}/vision_model.onnx`
-};
+/**
+ * The fp16 vision model (22.9 MB) matches full precision exactly; the int8 one is broken
+ * (cosine ~0.1 against fp32). Pinned to a revision so it can't change underneath us.
+ */
+export const MODEL_URL = `https://huggingface.co/${textEmbeddings.model}/resolve/${textEmbeddings.revision}/onnx/vision_model_fp16.onnx`;
+export const MODEL_BYTES = 22_876_479;
+
+/** Cache Storage bucket holding the model and the runtime's .wasm file. */
+export const AI_CACHE = 'strip-ai';
 
 /** The model's input is a 256×256 RGB crop, values 0..1, no mean/std normalisation. */
 export const INPUT_SIZE = 256;
@@ -26,6 +31,11 @@ export interface SubjectResult {
 	strength: number;
 	/** Best-matching descriptions with their share, strongest first. */
 	top: { text: string; p: number }[];
+}
+
+/** What's stored on each photo. */
+export interface SubjectInfo extends SubjectResult {
+	version: number;
 }
 
 function normalize(v: ArrayLike<number>): Float32Array {

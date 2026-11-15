@@ -3,17 +3,18 @@
 	import * as Comlink from 'comlink';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
-	import type { AiWorkerApi, EmbedResult, LoadInfo } from '#lib/ai/ai.worker.ts';
-	import type { AiBackend, AiPrecision } from '#lib/ai/model.ts';
+	import type { AiWorkerApi, LoadInfo } from '#lib/ai/ai.worker.ts';
+	import type { AiBackend, SubjectResult } from '#lib/ai/model.ts';
 	import AiWorker from '#lib/ai/ai.worker.ts?worker';
 
-	interface Row extends Partial<EmbedResult> {
+	interface Row extends Partial<SubjectResult> {
+		prepMs?: number;
+		inferMs?: number;
 		name: string;
 		error?: string;
 	}
 
 	let backend = $state<AiBackend>('gpu' in navigator ? 'webgpu' : 'wasm');
-	let precision = $state<AiPrecision>('fp16');
 	let status = $state('Idle');
 	let load = $state<LoadInfo | null>(null);
 	let rows = $state<Row[]>([]);
@@ -51,13 +52,13 @@
 		totalMs = 0;
 		try {
 			fresh();
-			status = `Loading ${precision} model on ${backend}…`;
-			load = await worker!.load(backend, precision);
+			status = `Loading model on ${backend}…`;
+			load = await worker!.load(undefined, backend);
 			const t0 = performance.now();
 			for (let i = 0; i < files.length; i++) {
 				status = `Photo ${i + 1} of ${files.length}`;
 				try {
-					rows[i] = { name: files[i].name, ...(await worker!.embed(files[i])) };
+					rows[i] = { name: files[i].name, ...(await worker!.detectFile(files[i])) };
 				} catch (err) {
 					rows[i] = { name: files[i].name, error: String(err) };
 					if (crashed) break;
@@ -92,14 +93,6 @@
 				onclick={() => (backend = b)}>{b === 'webgpu' ? 'WebGPU' : 'WebAssembly'}</Button
 			>
 		{/each}
-		{#each ['fp16', 'fp32'] as const as p (p)}
-			<Button
-				variant={precision === p ? 'default' : 'outline'}
-				size="sm"
-				disabled={busy}
-				onclick={() => (precision = p)}>{p === 'fp16' ? '23 MB model' : '46 MB model'}</Button
-			>
-		{/each}
 	</div>
 
 	<label
@@ -113,8 +106,8 @@
 		<div>Status: {status}</div>
 		<div>WebGPU in browser: {'gpu' in navigator ? 'yes' : 'no'}</div>
 		{#if load}
-			<div>Backend: {load.backend} · model {(load.bytes / 1e6).toFixed(1)} MB</div>
-			<div>Download {ms(load.downloadMs)} · session {ms(load.createMs)}</div>
+			<div>Backend: {load.backend}</div>
+			<div>Load {ms(load.ms)} · {load.fromCache ? 'from storage' : 'downloaded'}</div>
 		{/if}
 		{#if rows.length}
 			<div>First photo (warm-up): {ms(rows[0]?.inferMs)}</div>
