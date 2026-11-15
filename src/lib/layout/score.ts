@@ -110,11 +110,58 @@ function distanceOutside(v: number, [lo, hi]: [number, number]) {
 	return v < lo ? (lo - v) / lo : v > hi ? (v - hi) / hi : 0;
 }
 
-export function scoreCarousel(
+const edgeDistance = (x: number) => Math.min(x % SLIDE_W, SLIDE_W - (x % SLIDE_W));
+
+/** Aspect bands for span ranges (shared with the generator's thresholds). */
+export function spanRangeFor(photo: LayoutPhoto, preset: StylePreset): [number, number] {
+	const a = photo.width / photo.height;
+	return a > 1.15 ? preset.bgSpanLandscape : a < 0.87 ? preset.bgSpanPortrait : preset.bgSpanSquare;
+}
+
+/** Per-item measurements behind the score; the editor's live warnings read these too. */
+export interface CarouselMeasures {
+	joins: {
+		x: number;
+		/** Index of the background starting at this join. */
+		index: number;
+		/** Distance to the nearest slide edge (px). */
+		edgeDistance: number;
+		/** Hidden under a frame. */
+		covered: boolean;
+		/** 0..1: how far inside the clearance a visible join sits. */
+		nearEdge: number;
+	}[];
+	frames: {
+		id: string;
+		placement: number;
+		coversSubject: number;
+		contrast: number;
+		/** Both the frame and the background behind it have analysis (else contrast is 0). */
+		compared: boolean;
+		/** Distance outside the height range, ×3 (0 = inside). */
+		heightOff: number;
+		upscale: number;
+	}[];
+	backgrounds: {
+		index: number;
+		/** Share hidden by frames. */
+		hidden: number;
+		/** Distance outside the span range (null for the grid tile). */
+		spanOff: number | null;
+		/** Null without a photo. */
+		subjectCut: number | null;
+		upscale: number | null;
+	}[];
+	/** Consecutive backgrounds, and each frame with the background behind it. */
+	pairs: { a: PhotoId; b: PhotoId; duplicate: boolean; rhythm: number }[];
+	lastSlideCovered: number;
+}
+
+export function measureCarousel(
 	c: Carousel,
 	photos: Map<PhotoId, LayoutPhoto>,
 	preset: StylePreset
-): ScoreResult {
+): CarouselMeasures {
 	const W = stripWidth(c);
 	const frames = c.frames.map((f) => ({ f, outer: frameOuter(f), inner: frameInner(f) }));
 	const bgs = c.backgrounds.map((b) => ({
@@ -122,98 +169,120 @@ export function scoreCarousel(
 		rect: backgroundRect(b),
 		photo: b.photoId ? photos.get(b.photoId) : undefined
 	}));
+	const outers = frames.map(({ outer }) => outer);
+	const underCentre = (outer: Rect) => {
+		const cx = outer.x + outer.w / 2;
+		return bgs.find(({ rect }) => cx >= rect.x && cx < rect.x + rect.w)?.photo;
+	};
 
 	// Joins.
-	const joins = c.backgrounds.slice(1).map((b) => b.x0);
-	const edgeDistance = (x: number) => Math.min(x % SLIDE_W, SLIDE_W - (x % SLIDE_W));
-	const offEdgeJoins = joins.filter((x) => edgeDistance(x) > 2);
 	const covered = (x: number) =>
 		frames.some(({ outer }) => x > outer.x + 8 && x < outer.x + outer.w - 8);
-	const joinCovered = avg(
-		offEdgeJoins.map((x) => (covered(x) ? 1 : 0)),
-		0.5
-	);
-	const joinNearEdge = avg(
-		joins.map((x) => {
-			const d = edgeDistance(x);
-			return d > 2 && d < preset.joinClearance && !covered(x) ? 1 - d / preset.joinClearance : 0;
-		})
-	);
+	const joins = c.backgrounds.slice(1).map((b, i) => {
+		const x = b.x0;
+		const d = edgeDistance(x);
+		const isCovered = covered(x);
+		const nearEdge =
+			d > 2 && d < preset.joinClearance && !isCovered ? 1 - d / preset.joinClearance : 0;
+		return { x, index: i + 1, edgeDistance: d, covered: isCovered, nearEdge };
+	});
 
-	// Frames.
-	const framePlacement = avg(
-		frames.map(({ outer }) => {
-			const cx = outer.x + outer.w / 2;
-			const slideCentre = (Math.floor(cx / SLIDE_W) + 0.5) * SLIDE_W;
-			const centred = 1 - Math.min(1, Math.abs(cx - slideCentre) / (SLIDE_W / 4));
-			let straddle = 0;
+	const frameMeasures = frames.map(({ f, outer, inner }) => {
+		const cx = outer.x + outer.w / 2;
+		const slideCentre = (Math.floor(cx / SLIDE_W) + 0.5) * SLIDE_W;
+		const centred = 1 - Math.min(1, Math.abs(cx - slideCentre) / (SLIDE_W / 4));
+		let straddle = 0;
+		for (let k = 1; k < c.slideCount; k++) {
+			const edge = k * SLIDE_W;
+			if (edge <= outer.x || edge >= outer.x + outer.w) continue;
+			const side = Math.min(edge - outer.x, outer.x + outer.w - edge) / outer.w;
+			straddle = Math.max(straddle, Math.min(1, side / 0.15));
+		}
+		const placement = Math.max(centred, 0.6 * straddle);
+
+		// How much more of the backgrounds' "interesting" area a frame hides than an evenly
+		// interesting picture would: 0 = no worse than average, 1 = it sits squarely on the subject.
+		let excess = 0;
+		let weight = 0;
+		for (const { b, rect, photo } of bgs) {
+			const overlap = photo && intersect(rect, outer);
+			if (!overlap) continue;
+			const s = saliencyIn(photo, rect, b.crop, outer);
+			if (!s.total) continue;
+			const share = s.inside / s.total;
+			const areaShare = (overlap.w * overlap.h) / (rect.w * rect.h);
+			excess += Math.max(0, share / areaShare - 1) * areaShare;
+			weight += areaShare;
+		}
+		const coversSubject = weight ? Math.min(1, excess / weight) : 0;
+
+		const fp = photos.get(f.photoId);
+		const under = underCentre(outer);
+		const contrast =
+			!fp || !under
+				? 0
+				: fp.analysis.isMono !== under.analysis.isMono
+					? 1
+					: Math.min(1, Math.abs(fp.analysis.lumaMean - under.analysis.lumaMean) * 2) * 0.5;
+
+		return {
+			id: f.id,
+			placement,
+			coversSubject,
+			contrast,
+			compared: !!fp && !!under,
+			heightOff: distanceOutside(f.h / SLIDE_H, preset.frameHeight) * 3,
+			upscale: fp ? Math.min(1, upscaleOf(fp, inner, f.crop)) : 0
+		};
+	});
+
+	const backgrounds = bgs.map(({ b, rect, photo }, index) => {
+		let subjectCut: number | null = null;
+		if (photo) {
+			// A background's subject sliced by a slide edge it spans.
+			let worst = 0;
+			const total = saliencyIn(photo, rect, b.crop, rect).total || 1;
 			for (let k = 1; k < c.slideCount; k++) {
 				const edge = k * SLIDE_W;
-				if (edge <= outer.x || edge >= outer.x + outer.w) continue;
-				const side = Math.min(edge - outer.x, outer.x + outer.w - edge) / outer.w;
-				straddle = Math.max(straddle, Math.min(1, side / 0.15));
+				if (edge <= rect.x + 40 || edge >= rect.x + rect.w - 40) continue;
+				const band = saliencyIn(photo, rect, b.crop, { x: edge - 40, y: 0, w: 80, h: SLIDE_H });
+				worst = Math.max(worst, band.inside / total / (80 / rect.w) - 1);
 			}
-			return Math.max(centred, 0.6 * straddle);
-		}),
-		0.5
-	);
+			subjectCut = Math.min(1, Math.max(0, worst) / 2);
+		}
+		return {
+			index,
+			hidden: hiddenShare(rect, outers),
+			spanOff:
+				index === 0
+					? null
+					: photo
+						? Math.min(1, distanceOutside(rect.w / SLIDE_W, spanRangeFor(photo, preset)))
+						: 0,
+			subjectCut,
+			upscale: photo ? Math.min(1, upscaleOf(photo, rect, b.crop)) : null
+		};
+	});
 
-	// How much more of the backgrounds' "interesting" area a frame hides than an evenly
-	// interesting picture would: 0 = no worse than average, 1 = it sits squarely on the subject.
-	const frameCoversSubject = avg(
-		frames.map(({ outer }) => {
-			let excess = 0;
-			let weight = 0;
-			for (const { b, rect, photo } of bgs) {
-				const overlap = photo && intersect(rect, outer);
-				if (!overlap) continue;
-				const s = saliencyIn(photo, rect, b.crop, outer);
-				if (!s.total) continue;
-				const share = s.inside / s.total;
-				const areaShare = (overlap.w * overlap.h) / (rect.w * rect.h);
-				excess += Math.max(0, share / areaShare - 1) * areaShare;
-				weight += areaShare;
-			}
-			return weight ? Math.min(1, excess / weight) : 0;
-		})
-	);
-
-	// The worst-hidden background (not the grid tile): 0 up to 55% covered by frames, 1 by 85%.
-	const backgroundHidden = Math.max(
-		0,
-		...bgs.slice(1).map(({ rect }) => {
-			const share = hiddenShare(
-				rect,
-				frames.map(({ outer }) => outer)
-			);
-			return Math.min(1, Math.max(0, (share - HIDDEN_FREE) / 0.3));
-		})
-	);
-
-	const contrast = avg(
-		frames.map(({ f, outer }) => {
-			const fp = photos.get(f.photoId);
-			const cx = outer.x + outer.w / 2;
-			const under = bgs.find(({ rect }) => cx >= rect.x && cx < rect.x + rect.w)?.photo;
-			if (!fp || !under) return 0;
-			if (fp.analysis.isMono !== under.analysis.isMono) return 1;
-			return Math.min(1, Math.abs(fp.analysis.lumaMean - under.analysis.lumaMean) * 2) * 0.5;
-		})
-	);
-
-	const frameHeight = avg(
-		frames.map(({ f }) => distanceOutside(f.h / SLIDE_H, preset.frameHeight) * 3)
-	);
-
-	const bgSpan = avg(
-		bgs.slice(1).map(({ rect, photo }) => {
-			if (!photo) return 0;
-			const a = photo.width / photo.height;
-			const range =
-				a > 1.15 ? preset.bgSpanLandscape : a < 0.87 ? preset.bgSpanPortrait : preset.bgSpanSquare;
-			return Math.min(1, distanceOutside(rect.w / SLIDE_W, range));
-		})
-	);
+	const pairPhotos: [LayoutPhoto, LayoutPhoto][] = [];
+	for (let i = 1; i < bgs.length; i++) {
+		const a = bgs[i - 1].photo;
+		const b = bgs[i].photo;
+		if (a && b) pairPhotos.push([a, b]);
+	}
+	for (const { f, outer } of frames) {
+		const fp = photos.get(f.photoId);
+		const under = underCentre(outer);
+		if (fp && under) pairPhotos.push([fp, under]);
+	}
+	const pairs = pairPhotos.map(([a, b]) => ({
+		a: a.id,
+		b: b.id,
+		duplicate: hammingDistance(a.analysis.dhash, b.analysis.dhash) <= NEAR_DUPLICATE_BITS,
+		rhythm:
+			(a.analysis.isMono !== b.analysis.isMono ? 0.6 : 0) +
+			(a.analysis.shot !== b.analysis.shot ? 0.4 : 0)
+	}));
 
 	const lastX0 = W - SLIDE_W;
 	const lastSlideCovered = Math.min(
@@ -224,74 +293,49 @@ export function scoreCarousel(
 		) * 2
 	);
 
-	const upscale = avg([
-		...bgs
-			.filter((x) => x.photo)
-			.map(({ b, rect, photo }) => Math.min(1, upscaleOf(photo!, rect, b.crop))),
-		...frames.map(({ f, inner }) => {
-			const p = photos.get(f.photoId);
-			return p ? Math.min(1, upscaleOf(p, inner, f.crop)) : 0;
-		})
-	]);
+	return { joins, frames: frameMeasures, backgrounds, pairs, lastSlideCovered };
+}
 
-	// Neighbours: consecutive backgrounds, and each frame with the background behind it.
-	const neighbourPairs: [LayoutPhoto, LayoutPhoto][] = [];
-	for (let i = 1; i < bgs.length; i++) {
-		const a = bgs[i - 1].photo;
-		const b = bgs[i].photo;
-		if (a && b) neighbourPairs.push([a, b]);
-	}
-	for (const { f, outer } of frames) {
-		const fp = photos.get(f.photoId);
-		const cx = outer.x + outer.w / 2;
-		const under = bgs.find(({ rect }) => cx >= rect.x && cx < rect.x + rect.w)?.photo;
-		if (fp && under) neighbourPairs.push([fp, under]);
-	}
-	const adjacentDuplicate = avg(
-		neighbourPairs.map(([a, b]) =>
-			hammingDistance(a.analysis.dhash, b.analysis.dhash) <= NEAR_DUPLICATE_BITS ? 1 : 0
-		)
-	);
-	const rhythm = avg(
-		neighbourPairs.map(
-			([a, b]) =>
-				(a.analysis.isMono !== b.analysis.isMono ? 0.6 : 0) +
-				(a.analysis.shot !== b.analysis.shot ? 0.4 : 0)
-		),
-		0.5
-	);
+const notNull = <T>(x: T | null): x is T => x !== null;
 
-	// A background's subject sliced by a slide edge it spans.
-	const subjectCut = avg(
-		bgs
-			.filter((x) => x.photo)
-			.map(({ b, rect, photo }) => {
-				let worst = 0;
-				const total = saliencyIn(photo!, rect, b.crop, rect).total || 1;
-				for (let k = 1; k < c.slideCount; k++) {
-					const edge = k * SLIDE_W;
-					if (edge <= rect.x + 40 || edge >= rect.x + rect.w - 40) continue;
-					const band = saliencyIn(photo!, rect, b.crop, { x: edge - 40, y: 0, w: 80, h: SLIDE_H });
-					worst = Math.max(worst, band.inside / total / (80 / rect.w) - 1);
-				}
-				return Math.min(1, Math.max(0, worst) / 2);
-			})
-	);
+export function scoreCarousel(
+	c: Carousel,
+	photos: Map<PhotoId, LayoutPhoto>,
+	preset: StylePreset
+): ScoreResult {
+	const m = measureCarousel(c, photos, preset);
+	const later = m.backgrounds.slice(1);
 
 	const terms: ScoreTerms = {
-		joinCovered,
-		joinNearEdge,
-		framePlacement,
-		frameCoversSubject,
-		backgroundHidden,
-		contrast,
-		frameHeight,
-		bgSpan,
-		lastSlideCovered,
-		upscale,
-		adjacentDuplicate,
-		rhythm,
-		subjectCut
+		joinCovered: avg(
+			m.joins.filter((j) => j.edgeDistance > 2).map((j) => (j.covered ? 1 : 0)),
+			0.5
+		),
+		joinNearEdge: avg(m.joins.map((j) => j.nearEdge)),
+		framePlacement: avg(
+			m.frames.map((f) => f.placement),
+			0.5
+		),
+		frameCoversSubject: avg(m.frames.map((f) => f.coversSubject)),
+		// The worst-hidden background (not the grid tile): 0 up to 55% covered by frames, 1 by 85%.
+		backgroundHidden: Math.max(
+			0,
+			...later.map((b) => Math.min(1, Math.max(0, (b.hidden - HIDDEN_FREE) / 0.3)))
+		),
+		contrast: avg(m.frames.map((f) => f.contrast)),
+		frameHeight: avg(m.frames.map((f) => f.heightOff)),
+		bgSpan: avg(later.map((b) => b.spanOff ?? 0)),
+		lastSlideCovered: m.lastSlideCovered,
+		upscale: avg([
+			...m.backgrounds.map((b) => b.upscale).filter(notNull),
+			...m.frames.map((f) => f.upscale)
+		]),
+		adjacentDuplicate: avg(m.pairs.map((p) => (p.duplicate ? 1 : 0))),
+		rhythm: avg(
+			m.pairs.map((p) => p.rhythm),
+			0.5
+		),
+		subjectCut: avg(m.backgrounds.map((b) => b.subjectCut).filter(notNull))
 	};
 	let total = 0;
 	for (const key of Object.keys(terms) as (keyof ScoreWeights)[]) {
