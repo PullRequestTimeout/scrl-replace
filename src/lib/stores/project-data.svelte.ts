@@ -2,7 +2,14 @@ import type { Photo, Project, ProjectId } from '#lib/model/types.ts';
 import { getPhotos, getProject, saveProject, savePhotoAnalyses } from '#lib/storage/projects.ts';
 import { hasCurrentAnalysis } from '#lib/layout/types.ts';
 import { imageWorker } from '#lib/workers/client.ts';
-import { subjectDetection } from '#lib/ai/detection.svelte.ts';
+import { hasCurrentSubject, subjectDetection } from '#lib/ai/detection.svelte.ts';
+import { isSubjectDetectionOn } from '#lib/ai/prefs.ts';
+
+/** Longest suggestions wait for subject detection (the first model load is a few seconds). */
+const SUBJECT_WAIT_MS = 20_000;
+
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | null> =>
+	Promise.race([p, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
 import { buildReferenceCarousels, matchReferencePhotos } from '#lib/fixtures/reference.ts';
 import type { ReferencePhoto } from '#lib/fixtures/reference-carousels.ts';
 import { getPreset } from '#lib/storage/presets.ts';
@@ -48,20 +55,35 @@ export class ProjectData {
 	/** Photos analysed so far / needing analysis, for progress display. */
 	analysing = $state<{ done: number; total: number } | null>(null);
 
-	/** Analyse any photos imported before analysis existed (or with an outdated version). */
+	/**
+	 * Analyse any photos imported before analysis existed (or with an outdated version), and
+	 * run subject detection when it's on. Suggestions wait for detection, but never longer than
+	 * SUBJECT_WAIT_MS: past that, or if it fails, they go ahead without it.
+	 */
 	async ensureAnalysis() {
-		// Results are only stored for now; suggestions don't use them yet.
-		void subjectDetection.ensureSubjects($state.snapshot(this.photos));
+		const subjects = withTimeout(
+			subjectDetection.ensureSubjects($state.snapshot(this.photos)),
+			SUBJECT_WAIT_MS
+		);
 		const missing = this.photos.filter((p) => !hasCurrentAnalysis(p));
-		if (!missing.length) return;
-		this.analysing = { done: 0, total: missing.length };
-		const BATCH = 4;
-		for (let i = 0; i < missing.length; i += BATCH) {
-			const ids = missing.slice(i, i + BATCH).map((p) => p.id);
-			const results = await imageWorker().analyzeStored(ids);
-			await savePhotoAnalyses(results);
-			this.photos = this.photos.map((p) => (results[p.id] ? { ...p, analysis: results[p.id] } : p));
-			this.analysing = { done: Math.min(missing.length, i + BATCH), total: missing.length };
+		if (missing.length) {
+			this.analysing = { done: 0, total: missing.length };
+			const BATCH = 4;
+			for (let i = 0; i < missing.length; i += BATCH) {
+				const ids = missing.slice(i, i + BATCH).map((p) => p.id);
+				const results = await imageWorker().analyzeStored(ids);
+				await savePhotoAnalyses(results);
+				this.photos = this.photos.map((p) =>
+					results[p.id] ? { ...p, analysis: results[p.id] } : p
+				);
+				this.analysing = { done: Math.min(missing.length, i + BATCH), total: missing.length };
+			}
+		}
+		const needing = this.photos.filter((p) => !hasCurrentSubject(p)).length;
+		if (needing && isSubjectDetectionOn()) this.analysing = { done: 0, total: needing };
+		const found = await subjects;
+		if (found && Object.keys(found).length) {
+			this.photos = this.photos.map((p) => (found[p.id] ? { ...p, subject: found[p.id] } : p));
 		}
 		this.analysing = null;
 	}
