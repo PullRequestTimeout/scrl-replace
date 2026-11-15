@@ -15,7 +15,7 @@ import {
 	type SubjectInfo
 } from './model.ts';
 import { SUBJECT_PREF_KEY } from './prefs.ts';
-import { isSlowRun, median, recordRun, SNOOZE_MS, STALL_MS } from './watchdog.ts';
+import { isSlowRun, median, recordRun, slowThreshold, SNOOZE_MS, STALL_MS } from './watchdog.ts';
 import type { AiWorkerApi } from './ai.worker.ts';
 import AiWorker from './ai.worker.ts?worker';
 
@@ -34,8 +34,9 @@ const ACTIVE_KEY = 'subject-detection:active';
 /** Why the app suggests turning detection off. */
 export interface DetectionWarning {
 	kind: 'slow' | 'crash';
-	/** Seconds per photo, for 'slow'. */
+	/** For 'slow': seconds per photo, or for a slow model load, how long loading took. */
 	seconds?: number;
+	loadSeconds?: number;
 }
 
 /** Above this model time per photo on the speed test, the feature stays off. */
@@ -226,7 +227,11 @@ class SubjectDetection {
 		writePref(RUNS_KEY, JSON.stringify(next.history));
 		const snoozedUntil = Number(readPref(SNOOZE_KEY)) || 0;
 		if (next.warn && slow && Date.now() > snoozedUntil) {
-			this.warning = { kind: 'slow', seconds: Math.round(perPhotoMs / 100) / 10 };
+			const tenths = (ms: number) => Math.round(ms / 100) / 10;
+			this.warning =
+				perPhotoMs > slowThreshold(this.benchmarkMs)
+					? { kind: 'slow', seconds: tenths(perPhotoMs) }
+					: { kind: 'slow', loadSeconds: Math.round(loadMs / 1000) };
 		}
 	}
 
