@@ -75,33 +75,42 @@
 		return Math.min(Math.max(x, -pad), W - viewW + pad);
 	}
 
+	/**
+	 * Strip x at the centre of the view. A plain variable (not state) so it always holds the
+	 * centre at the *previous* zoom when the zoom changes; reading derived values there would
+	 * already use the new scale.
+	 */
+	let viewCentre = SLIDE_W / 2;
+	/** Set by an overview tap: where the next zoom-in should centre. */
+	let pendingCentre: number | null = null;
+
+	function setOrigin(x: number) {
+		originX = clampOrigin(x);
+		viewCentre = originX + viewW / 2;
+	}
+
 	// Keep the view centred on the same strip point when the zoom or screen width changes.
-	let lastZoom: Zoom | null = null;
-	() => {
-		const z = zoom;
-		const width = cw;
-		const s = scale;
+	$effect(() => {
+		void zoom;
+		void cw;
+		void scale;
 		untrack(() => {
-			const target = lastZoom === null ? SLIDE_W / 2 : centerX;
-			originX = clampOrigin(target - width / s / 2);
-			lastZoom = z;
+			const target = pendingCentre ?? viewCentre;
+			pendingCentre = null;
+			setOrigin(target - viewW / 2);
 		});
-	};
+	});
 
 	// Re-clamp when the strip changes length (slides added or removed).
-	() => {
+	$effect(() => {
 		void W;
-		untrack(() => (originX = clampOrigin(originX)));
-	};
+		untrack(() => setOrigin(originX));
+	});
 
+	// Report the centre to the parent (used to place new frames where you're looking).
 	$effect(() => {
 		centerX = originX + viewW / 2;
 	});
-
-	/** Pan so strip x is centred (used when zooming in from the overview). */
-	export function centerOn(x: number) {
-		originX = clampOrigin(x - viewW / 2);
-	}
 
 	const toCssX = (x: number) => (x - originX) * scale;
 	const toCssY = (y: number) => y * scale;
@@ -353,7 +362,7 @@
 		const threshold = 10 / scale;
 		switch (gesture.kind) {
 			case 'pan':
-				originX = clampOrigin(gesture.startOrigin - dx / scale);
+				setOrigin(gesture.startOrigin - dx / scale);
 				break;
 			case 'move': {
 				const g = gesture;
@@ -455,7 +464,10 @@
 		}
 
 		if (zoom === 'overview') {
-			if (inStrip) onZoomTo(s.x);
+			if (inStrip) {
+				pendingCentre = s.x;
+				onZoomTo(s.x);
+			}
 			return;
 		}
 		if (!inStrip) {
@@ -469,7 +481,9 @@
 
 		if (!id && carousel.backgrounds[index]?.photoId === null) {
 			editor.select(ref);
-			onEmptyTap(index);
+			// Open on the next frame: iOS fires its synthetic click after the tap, and if the sheet
+			// is already on screen that click lands on its overlay and closes it straight away.
+			requestAnimationFrame(() => onEmptyTap(index));
 			return;
 		}
 
@@ -497,8 +511,8 @@
 	/** While dragging a frame near the screen edge, scroll the strip along. */
 	function autoPan(cssX: number) {
 		const edge = 28;
-		if (cssX < edge) originX = clampOrigin(originX - 12 / scale);
-		else if (cssX > cw - edge) originX = clampOrigin(originX + 12 / scale);
+		if (cssX < edge) setOrigin(originX - 12 / scale);
+		else if (cssX > cw - edge) setOrigin(originX + 12 / scale);
 	}
 
 	const emptyRects = $derived(
@@ -525,6 +539,7 @@
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
 	onpointercancel={onPointerUp}
+	ontouchend={(e) => e.preventDefault()}
 >
 	<canvas bind:this={canvas} class="absolute inset-0 h-full w-full"></canvas>
 

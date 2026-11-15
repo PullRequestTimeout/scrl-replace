@@ -11,13 +11,12 @@
 		/** Short label for photos already used, e.g. "Here" or "Carousel 2". */
 		usage: Map<PhotoId, string>;
 		onPick: (photo: Photo) => void;
-		onClose: () => void;
 	}
 
-	let { open, title, description, photos, usage, onPick, onClose }: Props = $props();
+	let { open = $bindable(false), title, description, photos, usage, onPick }: Props = $props();
 </script>
 
-<Drawer.Root {open} onOpenChange={(next) => !next && onClose()}>
+<Drawer.Root bind:open>
 	<Drawer.Content class="max-h-[85dvh]">
 		<Drawer.Header>
 			<Drawer.Title>{title}</Drawer.Title>

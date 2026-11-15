@@ -38,7 +38,19 @@
 		| { kind: 'replace'; ref: ElementRef }
 		| { kind: 'swap'; ref: ElementRef }
 	>(null);
+	/**
+	 * Whether the photo sheet is showing. Two-way bound to the drawer so its own dismissals
+	 * (swipe, overlay tap) always flow back here; otherwise iOS could leave the drawer closed
+	 * while we still think it's open, and "Choose" would appear to do nothing.
+	 */
+	let trayOpen = $state(false);
 	let current = $state(0);
+
+	type Tray = NonNullable<typeof tray>;
+	function openTray(t: Tray) {
+		tray = t;
+		trayOpen = true;
+	}
 	let scroller = $state<HTMLDivElement>();
 
 	const photoMap = $derived(new Map(data.photos.map((p) => [p.id, p])));
@@ -118,7 +130,7 @@
 
 	function pick(photo: Photo) {
 		const t = tray;
-		tray = null;
+		trayOpen = false;
 		if (!editor || !t) return;
 		const aspect = photo.width / photo.height;
 		if (t.kind === 'add') {
@@ -262,7 +274,7 @@
 			{sources}
 			{zoom}
 			bind:centerX
-			onEmptyTap={(i) => (tray = { kind: 'replace', ref: { kind: 'bg', index: i } })}
+			onEmptyTap={(i) => openTray({ kind: 'replace', ref: { kind: 'bg', index: i } })}
 			onZoomTo={zoomTo}
 		/>
 		{#if zoom === 'overview'}
@@ -278,15 +290,15 @@
 			<EditorToolbar
 				{editor}
 				photos={photoMap}
-				onAddFrame={() => (tray = { kind: 'add' })}
-				onReplace={() => editor?.selection && (tray = { kind: 'replace', ref: editor.selection })}
-				onSwap={() => editor?.selection && (tray = { kind: 'swap', ref: editor.selection })}
+				onAddFrame={() => openTray({ kind: 'add' })}
+				onReplace={() => editor?.selection && openTray({ kind: 'replace', ref: editor.selection })}
+				onSwap={() => editor?.selection && openTray({ kind: 'swap', ref: editor.selection })}
 			/>
 		</div>
 	</div>
 
 	<PhotoTray
-		open={tray !== null}
+		bind:open={trayOpen}
 		title={trayTitle}
 		description={forGridTile
 			? 'Slide 1 is also the profile grid tile. Portrait photos are listed first.'
@@ -294,7 +306,6 @@
 		photos={trayPhotos}
 		{usage}
 		onPick={pick}
-		onClose={() => (tray = null)}
 	/>
 {:else if editor && mode === 'preview'}
 	<main class="mx-auto flex max-w-xl flex-col gap-3 py-4">
