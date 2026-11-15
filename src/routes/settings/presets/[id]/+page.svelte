@@ -137,10 +137,13 @@
 		{ value: '#000000', label: 'Black' }
 	];
 	let customInput = $state<HTMLInputElement>();
-	const isCustomEmpty = (p: StylePreset) =>
-		!EMPTY_SWATCHES.some((s) => s.value === p.emptyBackground);
+	/** Custom was tapped this visit: it stays selected even if the sheet closes on white or black. */
+	let customChosen = $state(false);
+	const isCustomSelected = (p: StylePreset) =>
+		customChosen || !EMPTY_SWATCHES.some((s) => s.value === p.emptyBackground);
 
 	function setEmptyBackground(p: StylePreset, value: string) {
+		customChosen = false;
 		if (readOnly || p.emptyBackground === value.toLowerCase()) return;
 		p.emptyBackground = value.toLowerCase();
 		void save();
@@ -229,6 +232,7 @@
 	{@const option =
 		'flex h-11 min-w-11 items-center gap-2 rounded-md border px-3 text-sm has-checked:border-primary has-checked:ring-2 has-checked:ring-primary has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring has-disabled:opacity-50 active:bg-accent'}
 	{@const chip = 'size-5 shrink-0 rounded-sm ring-1 ring-foreground/25'}
+	{@const custom = isCustomSelected(p)}
 	<fieldset class="flex flex-col gap-2" disabled={readOnly} aria-describedby="empty-bg-desc">
 		<!-- Safari lays out a legend specially, so it's for screen readers only; the visible heading
 		     matches the other rows. -->
@@ -241,7 +245,7 @@
 		</span>
 		<div class="flex flex-wrap items-center gap-2">
 			{#each EMPTY_SWATCHES as s (s.value)}
-				{@const checked = p.emptyBackground === s.value}
+				{@const checked = !custom && p.emptyBackground === s.value}
 				<label class={option}>
 					<input
 						type="radio"
@@ -263,8 +267,11 @@
 					type="radio"
 					name="empty-bg"
 					class="sr-only"
-					checked={isCustomEmpty(p)}
-					onchange={() => customInput?.click()}
+					checked={custom}
+					onchange={() => {
+						customChosen = true;
+						customInput?.click();
+					}}
 				/>
 				<input
 					bind:this={customInput}
@@ -273,6 +280,7 @@
 					tabindex="-1"
 					class="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-default"
 					value={p.emptyBackground}
+					onclick={() => (customChosen = true)}
 					oninput={(e) => (p.emptyBackground = e.currentTarget.value.toLowerCase())}
 					onchange={(e) => {
 						p.emptyBackground = e.currentTarget.value.toLowerCase();
@@ -281,7 +289,7 @@
 				/>
 				<span class={chip} style:background-color={p.emptyBackground}></span>
 				Custom
-				{#if isCustomEmpty(p)}<CheckIcon class="size-4" aria-hidden="true" />{/if}
+				{#if custom}<CheckIcon class="size-4" aria-hidden="true" />{/if}
 			</label>
 		</div>
 	</fieldset>
