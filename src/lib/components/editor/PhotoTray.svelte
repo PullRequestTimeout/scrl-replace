@@ -6,6 +6,7 @@
 	interface Props {
 		open: boolean;
 		title: string;
+		description?: string;
 		photos: Photo[];
 		/** Short label for photos already used, e.g. "Here" or "Carousel 2". */
 		usage: Map<PhotoId, string>;
@@ -13,14 +14,16 @@
 		onClose: () => void;
 	}
 
-	let { open, title, photos, usage, onPick, onClose }: Props = $props();
+	let { open, title, description, photos, usage, onPick, onClose }: Props = $props();
 </script>
 
 <Drawer.Root {open} onOpenChange={(next) => !next && onClose()}>
 	<Drawer.Content class="max-h-[85dvh]">
 		<Drawer.Header>
 			<Drawer.Title>{title}</Drawer.Title>
-			<Drawer.Description>{photos.length} photos in this project</Drawer.Description>
+			<Drawer.Description>
+				{description ?? `${photos.length} photos in this project`}
+			</Drawer.Description>
 		</Drawer.Header>
 		<ul
 			class="grid grid-cols-4 gap-0.5 overflow-y-auto px-0.5 pb-[max(1rem,env(safe-area-inset-bottom))]"

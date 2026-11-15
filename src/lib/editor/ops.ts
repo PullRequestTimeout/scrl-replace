@@ -28,11 +28,21 @@ export function newFrameId(): string {
 	return crypto.randomUUID();
 }
 
-/** A blank carousel for building by hand: one empty background across all slides. */
+/**
+ * A blank carousel for building by hand: slide 1 is its own empty slot for the grid tile
+ * (a single portrait photo), and one empty background covers the rest.
+ */
 export function blankCarousel(slideCount = 3): Carousel {
+	const slot = (x0: number, x1: number): Background => ({
+		photoId: null,
+		x0,
+		x1,
+		crop: { ...CENTRED }
+	});
 	return {
 		slideCount,
-		backgrounds: [{ photoId: null, x0: 0, x1: slideCount * SLIDE_W, crop: { ...CENTRED } }],
+		backgrounds:
+			slideCount > 1 ? [slot(0, SLIDE_W), slot(SLIDE_W, slideCount * SLIDE_W)] : [slot(0, SLIDE_W)],
 		frames: []
 	};
 }

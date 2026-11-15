@@ -61,9 +61,9 @@ test('builds a carousel by hand: fill, add frame, drag, undo/redo, crop, add sli
 	const cx = box.x + box.width / 2;
 	const cy = box.y + box.height / 2;
 
-	// Empty background: tapping opens the photo tray.
-	await page.mouse.click(cx, cy);
-	await expect(page.getByRole('heading', { name: 'Choose a photo' })).toBeVisible();
+	// Slide 1 is an empty grid-tile slot: tapping it opens the photo tray for the tile.
+	await page.mouse.click(box.x + box.width * 0.3, cy);
+	await expect(page.getByRole('heading', { name: 'Choose the grid tile photo' })).toBeVisible();
 	await page.getByRole('dialog').getByRole('button').first().click();
 	await expect(page.getByRole('dialog')).toBeHidden();
 	await expect.poll(async () => (await savedCarousel(page))?.backgrounds[0].photoId).toBeTruthy();
@@ -95,13 +95,27 @@ test('builds a carousel by hand: fill, add frame, drag, undo/redo, crop, add sli
 		.poll(async () => (await savedCarousel(page))!.frames[0].x)
 		.toBeGreaterThan(before.x + 50);
 
+	// An unselected frame stays put: dragging on it scrolls the strip instead.
+	await page.mouse.click(cx, box.y + box.height + 60);
+	await expect(page.getByRole('button', { name: 'Deselect' })).toBeHidden();
+	const settled = (await savedCarousel(page))!.frames[0];
+	await page.mouse.move(cx + 60, cy + 30);
+	await page.mouse.down();
+	for (let i = 1; i <= 10; i++) await page.mouse.move(cx + 60 - i * 6, cy + 30);
+	await page.mouse.up();
+	await page.waitForTimeout(700);
+	expect((await savedCarousel(page))!.frames[0].x).toBeCloseTo(settled.x, 0);
+	// The strip scrolled left by 60px, so the frame is now under (cx, cy + 30). Select it again.
+	await page.mouse.click(cx, cy + 30);
+	await expect(page.getByText('Framed photo')).toBeVisible();
+
 	// Make the frame square (a landscape photo then has room to pan), enter crop mode from
 	// the toolbar, and drag the photo inside its frame.
 	await page.getByRole('button', { name: '1:1' }).click();
 	const moved = (await savedCarousel(page))!.frames[0];
 	await page.getByRole('button', { name: 'Crop' }).click();
 	await expect(page.getByRole('slider', { name: 'Crop zoom' })).toBeVisible();
-	const fx = cx + 60;
+	const fx = cx;
 	const fy = cy + 30;
 	await page.mouse.move(fx, fy);
 	await page.mouse.down();
@@ -123,5 +137,5 @@ test('builds a carousel by hand: fill, add frame, drag, undo/redo, crop, add sli
 	await expect(page.getByLabel(/^Carousel 1, left tile, 4 slides/)).toBeVisible();
 	await page.getByRole('link', { name: 'Export' }).click();
 	await expect(page.getByRole('heading', { name: /^Post 3/ })).toBeVisible({ timeout: 60_000 });
-	await expect(page.getByText('still has empty backgrounds')).toHaveCount(2);
+	await expect(page.getByText('still has empty backgrounds')).toHaveCount(3);
 });

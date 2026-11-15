@@ -145,7 +145,16 @@
 		}
 	}
 
+	const forGridTile = $derived(
+		tray?.kind === 'replace' && tray.ref.kind === 'bg' && tray.ref.index === 0
+	);
+
 	const trayPhotos = $derived.by(() => {
+		// The grid tile is a single 4:5 slide: list portrait photos first.
+		if (forGridTile) {
+			const portrait = (p: Photo) => (p.height > p.width ? 0 : 1);
+			return [...data.photos].sort((a, b) => portrait(a) - portrait(b));
+		}
 		if (tray?.kind !== 'swap' || !editor) return data.photos;
 		const here = new Set(photosIn(editor.carousel));
 		return data.photos.filter((p) => here.has(p.id));
@@ -156,7 +165,9 @@
 			? 'Add a framed photo'
 			: tray?.kind === 'swap'
 				? 'Swap with…'
-				: 'Choose a photo'
+				: forGridTile
+					? 'Choose the grid tile photo'
+					: 'Choose a photo'
 	);
 
 	/**
@@ -277,6 +288,9 @@
 	<PhotoTray
 		open={tray !== null}
 		title={trayTitle}
+		description={forGridTile
+			? 'Slide 1 is also the profile grid tile. Portrait photos are listed first.'
+			: undefined}
 		photos={trayPhotos}
 		{usage}
 		onPick={pick}

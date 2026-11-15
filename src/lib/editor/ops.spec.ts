@@ -170,12 +170,19 @@ describe('editing ops', () => {
 		expect(restackFrame(two, id, 1)).toBe(two);
 	});
 
-	it('builds from a blank carousel', () => {
+	it('starts blank carousels with slide 1 as its own grid-tile slot', () => {
 		const blank = blankCarousel(3);
 		valid(blank);
-		const withPhoto = replacePhoto(blank, { kind: 'bg', index: 0 }, 'a', 1.5);
-		const split = splitBackground(withPhoto, 0, 2000, null);
-		expect(split.backgrounds.map((b) => b.photoId)).toEqual(['a', null]);
+		expect(blank.backgrounds.map((b) => [b.photoId, b.x0, b.x1])).toEqual([
+			[null, 0, 1080],
+			[null, 1080, 3240]
+		]);
+		expect(blankCarousel(1).backgrounds).toHaveLength(1);
+
+		const tile = replacePhoto(blank, { kind: 'bg', index: 0 }, 'a', 0.8);
+		const rest = replacePhoto(tile, { kind: 'bg', index: 1 }, 'b', 1.5);
+		const split = splitBackground(rest, 1, 2200, 'c');
+		expect(split.backgrounds.map((b) => b.photoId)).toEqual(['a', 'b', 'c']);
 		valid(split);
 	});
 });
