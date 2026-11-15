@@ -6,11 +6,11 @@ import { SLIDE_H, SLIDE_W } from '#lib/model/constants.ts';
 import { frameOuter, stripWidth, type Carousel } from '#lib/model/layout.ts';
 import type { PhotoId } from '#lib/model/types.ts';
 import type { StylePreset } from '#lib/model/presets.ts';
-import { MAX_SLIDES } from './carousel.ts';
-import { HIDDEN_FREE, measureCarousel } from './score.ts';
+import { HIDDEN_FREE, measureCarousel, spanRangeFor } from './score.ts';
 import type { LayoutPhoto } from './types.ts';
 
-export const MIN_SLIDES = 3;
+/** Instagram's per-post limit (suggestions stop at MAX_SLIDES in carousel.ts). */
+export const INSTAGRAM_MAX_SLIDES = 20;
 
 /** What a warning points at, so the editor can select it. */
 export type WarningTarget = { kind: 'frame'; id: string } | { kind: 'bg'; index: number };
@@ -31,12 +31,9 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 /** Thresholds above which a measurement counts as a problem worth mentioning. */
 const LIMITS = {
-	coversSubject: 0.5,
-	contrastLuma: 0.1,
 	heightOff: 0.06,
 	spanOff: 0.1,
 	lastSlide: 0.5,
-	subjectCut: 0.5,
 	// The score measures enlargement at export size (2×); 1 means fewer source pixels than
 	// Instagram's 1080 px display, which is when softness actually shows.
 	upscale: 1
@@ -58,31 +55,14 @@ export function checkCarousel(
 		i === 0 ? 'The grid tile' : `The background on slide ${slideOf(c.backgrounds[i].x0 + 1)}`;
 
 	// --- Hard rules -------------------------------------------------------------------------
-	if (c.slideCount < MIN_SLIDES)
-		out.push({
-			key: 'slides-few',
-			rule: 'R1',
-			level: 'hard',
-			message: `Only ${c.slideCount} slide${c.slideCount === 1 ? '' : 's'}: a carousel needs at least ${MIN_SLIDES}.`
-		});
-	if (c.slideCount > MAX_SLIDES)
+	// No minimum: a one- or two-slide panorama with no carousel is a valid post.
+	if (c.slideCount > INSTAGRAM_MAX_SLIDES)
 		out.push({
 			key: 'slides-many',
 			rule: 'R1',
 			level: 'hard',
-			message: `${c.slideCount} slides: Instagram allows at most ${MAX_SLIDES}.`
+			message: `${c.slideCount} slides: Instagram allows at most ${INSTAGRAM_MAX_SLIDES}.`
 		});
-
-	c.backgrounds.forEach((b, i) => {
-		if (!b.photoId)
-			out.push({
-				key: `empty-${i}`,
-				rule: 'R2',
-				level: 'hard',
-				message: `${bgLabel(i)} has no photo yet.`,
-				target: { kind: 'bg', index: i }
-			});
-	});
 
 	const outers = c.frames.map((f) => ({ f, o: frameOuter(f) })).sort((a, b) => a.o.x - b.o.x);
 	for (const { f, o } of outers) {
@@ -102,7 +82,7 @@ export function checkCarousel(
 				key: `margin-${f.id}`,
 				rule: 'R10',
 				level: 'hard',
-				message: `${label} is closer than ${preset.frameMargin}px to the ${o.y < margin ? 'top' : 'bottom'} of the slide.`,
+				message: `${label} is closer to the ${o.y < margin ? 'top' : 'bottom'} of the slide than your style’s margin (${preset.frameMargin}px).`,
 				target
 			});
 	}
@@ -125,54 +105,47 @@ export function checkCarousel(
 				key: `gap-${a.f.id}-${b.f.id}`,
 				rule: 'R14',
 				level: 'hard',
-				message: `Two frames are only ${Math.max(0, Math.round(gap))}px apart (aim for ${Math.round(minGap)}px).`,
+				message: `Two frames are ${Math.max(0, Math.round(gap))}px apart, closer than your style’s gap (${Math.round(minGap)}px).`,
 				target: { kind: 'frame', id: b.f.id }
 			});
 	}
 
-	// --- Soft rules (from the scorer's measurements) ------------------------------------------
+	// --- Soft rules -------------------------------------------------------------------------
+	// An empty background shows the style's plain colour, which can be on purpose (a frame alone
+	// on a plain slide), so it's a note to confirm rather than an error.
+	c.backgrounds.forEach((b, i) => {
+		if (!b.photoId)
+			out.push({
+				key: `empty-${i}`,
+				rule: 'R2',
+				level: 'soft',
+				message: `${bgLabel(i)} has no photo, so it shows your style’s plain background colour. Check that’s what you want.`,
+				target: { kind: 'bg', index: i }
+			});
+	});
+
+	// From the scorer's measurements. Left out on purpose: hidden joins (R9), frames covering the
+	// subject and slide edges cutting it (R12, saliency is too rough until AI subject detection),
+	// and frame/background contrast (R13). The scorer still weighs them when suggesting layouts.
 	const m = measureCarousel(c, photos, preset);
 
+	// Hiding a join under a frame (R9) is a preference the scorer rewards, not a problem, so it
+	// gets no warning.
 	for (const j of m.joins) {
-		const target: WarningTarget = { kind: 'bg', index: j.index };
 		if (j.nearEdge > 0)
 			out.push({
 				key: `join-edge-${j.index}`,
 				rule: 'R6',
 				level: 'soft',
 				message: `A join is ${Math.round(j.edgeDistance)}px from the slide ${slideOf(j.x)} edge (aim for ${preset.joinClearance}px or right on it).`,
-				target
-			});
-		else if (j.edgeDistance > 2 && !j.covered)
-			out.push({
-				key: `join-visible-${j.index}`,
-				rule: 'R9',
-				level: 'soft',
-				message: `The join on slide ${slideOf(j.x)} isn’t hidden under a frame.`,
-				target
+				target: { kind: 'bg', index: j.index }
 			});
 	}
 
 	for (const f of m.frames) {
 		const target: WarningTarget = { kind: 'frame', id: f.id };
 		const label = frameLabel.get(f.id)!;
-		if (f.coversSubject >= LIMITS.coversSubject)
-			out.push({
-				key: `subject-${f.id}`,
-				rule: 'R12',
-				level: 'soft',
-				message: `${label} covers the subject of the background behind it.`,
-				target
-			});
 		const frame = c.frames.find((x) => x.id === f.id)!;
-		if (f.compared && f.contrast < LIMITS.contrastLuma)
-			out.push({
-				key: `contrast-${f.id}`,
-				rule: 'R13',
-				level: 'soft',
-				message: `${label} doesn’t stand out from its background (same colour or B&W, similar brightness).`,
-				target
-			});
 		if (f.heightOff > LIMITS.heightOff) {
 			const h = frame.h / SLIDE_H;
 			out.push({
@@ -205,22 +178,17 @@ export function checkCarousel(
 			});
 		if (b.spanOff !== null && b.spanOff > LIMITS.spanOff) {
 			const bg = c.backgrounds[b.index];
-			out.push({
-				key: `span-${b.index}`,
-				rule: 'R5',
-				level: 'soft',
-				message: `${bgLabel(b.index)} spans ${((bg.x1 - bg.x0) / SLIDE_W).toFixed(1)} slides, outside your usual range for its shape.`,
-				target
-			});
+			const photo = bg.photoId ? photos.get(bg.photoId) : undefined;
+			const span = (bg.x1 - bg.x0) / SLIDE_W;
+			let message = `${bgLabel(b.index)} spans ${span.toFixed(1)} slides, outside your usual range for its shape.`;
+			if (photo) {
+				const [lo, hi] = spanRangeFor(photo, preset);
+				const a = photo.width / photo.height;
+				const shape = a > 1.15 ? 'landscape' : a < 0.87 ? 'portrait' : 'square';
+				message = `${bgLabel(b.index)} spans ${span.toFixed(1)} slides, ${span > hi ? 'above' : 'below'} your usual ${lo.toFixed(1)}–${hi.toFixed(1)} for ${shape} photos.`;
+			}
+			out.push({ key: `span-${b.index}`, rule: 'R5', level: 'soft', message, target });
 		}
-		if (b.subjectCut !== null && b.subjectCut >= LIMITS.subjectCut)
-			out.push({
-				key: `cut-${b.index}`,
-				rule: 'R12',
-				level: 'soft',
-				message: `A slide edge cuts through the subject of ${bgLabel(b.index).toLowerCase()}.`,
-				target
-			});
 		if (b.upscale !== null && b.upscale >= LIMITS.upscale)
 			out.push({
 				key: `upscale-b-${b.index}`,

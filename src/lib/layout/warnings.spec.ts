@@ -46,8 +46,41 @@ describe('checkCarousel: hard rules', () => {
 		expect(rules(carousel([frame('a', 1.5 * SLIDE_W)]))).toEqual([]);
 	});
 
-	it('flags too few slides and empty backgrounds', () => {
-		expect(rules(carousel([], 2, null))).toEqual(['R1', 'R2']);
+	it('allows short panoramas but not more slides than Instagram takes', () => {
+		expect(rules(carousel([], 1))).toEqual([]);
+		expect(rules(carousel([], 2))).toEqual([]);
+		expect(rules(carousel([], 20))).toEqual([]);
+		expect(rules(carousel([], 21))).toEqual(['R1']);
+	});
+
+	it('asks you to confirm an empty background rather than calling it an error', () => {
+		const w = checkCarousel(carousel([], 4, null), new Map(), DEFAULT_PRESET);
+		expect(w.find((x) => x.rule === 'R2')).toMatchObject({
+			level: 'soft',
+			target: { kind: 'bg', index: 1 }
+		});
+	});
+
+	it('says whether a background spans more or less than the style allows', () => {
+		const wide: LayoutPhoto = {
+			id: 'bg',
+			width: 3000,
+			height: 2000,
+			workingWidth: 3000,
+			workingHeight: 2000,
+			analysis: analyzePixels({
+				data: new Uint8ClampedArray(48 * 32 * 4).fill(128),
+				width: 48,
+				height: 32
+			}),
+			importIndex: 0
+		};
+		const span = (slides: number) =>
+			checkCarousel(carousel([], slides), new Map([['bg', wide]]), DEFAULT_PRESET).find(
+				(x) => x.rule === 'R5'
+			)?.message;
+		expect(span(5)).toContain('above your usual 1.3–2.2 for landscape photos');
+		expect(span(2)).toContain('below your usual 1.3–2.2 for landscape photos');
 	});
 
 	it('flags a frame on the grid tile', () => {
