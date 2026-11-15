@@ -151,8 +151,8 @@ const api = {
 	 * Load the model, downloading what's missing. Progress covers the model (the runtime is
 	 * a few MB and arrives alongside it).
 	 */
-	async load(onProgress?: Progress, force?: AiBackend): Promise<LoadInfo> {
-		if (session && backend && (!force || force === backend)) {
+	async load(onProgress?: Progress): Promise<LoadInfo> {
+		if (session && backend) {
 			return { backend, fromCache: true, ms: 0 };
 		}
 		await session?.release();
@@ -164,7 +164,7 @@ const api = {
 			cached(MODEL_URL, onProgress)
 		]);
 		ort.env.wasm.wasmBinary = wasm;
-		backend = force ?? (await pickBackend());
+		backend = await pickBackend();
 		session = await ort.InferenceSession.create(model, {
 			executionProviders: [backend],
 			graphOptimizationLevel: 'all'
@@ -198,11 +198,6 @@ const api = {
 			ms.push(prepMs + inferMs);
 		}
 		return { results, ms };
-	},
-
-	/** Score a picked file directly (test page). */
-	detectFile(file: Blob) {
-		return detectBlob(file);
 	},
 
 	async removeModel(): Promise<void> {
