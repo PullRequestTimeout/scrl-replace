@@ -4,6 +4,7 @@ import { addPhotoToProject } from '#lib/storage/projects.ts';
 import { requestPersistentStorage } from '#lib/storage/persist.ts';
 import { processImageFile } from '#lib/workers/client.ts';
 import { getColorSpace } from '#lib/settings.ts';
+import { clearImportMarker, STALL_MS, writeImportMarker } from './import-guard.ts';
 
 export interface ImportFailure {
 	name: string;
@@ -21,8 +22,18 @@ export class Importer {
 	failures = $state<ImportFailure[]>([]);
 	running = $derived(this.current !== null);
 	progress = $derived(this.total ? this.done / this.total : 0);
+	/** The current photo has taken more than STALL_MS: the worker may have crashed. */
+	stalled = $state(false);
+	/**
+	 * The photo and saved count when the last stall was detected. Not cleared when the stall
+	 * ends, so the warning's text stays put while it animates closed.
+	 */
+	stallInfo = $state({ name: '', stored: 0 });
+	/** Photos stored so far in this run (failures excluded). */
+	stored = $state(0);
 
 	#queue: File[] = [];
+	#stallTimer: ReturnType<typeof setTimeout> | undefined;
 	#projectId: ProjectId;
 	#startIndex: () => number;
 	#onPhoto: (photo: Photo) => void;
@@ -45,6 +56,7 @@ export class Importer {
 		if (!this.running) {
 			this.total = 0;
 			this.done = 0;
+			this.stored = 0;
 			this.failures = [];
 		}
 		this.total += images.length;
@@ -59,6 +71,13 @@ export class Importer {
 		while (this.#queue.length) {
 			const file = this.#queue.shift()!;
 			this.current = file.name;
+			writeImportMarker({
+				projectId: this.#projectId,
+				done: this.stored,
+				total: this.total,
+				current: file.name
+			});
+			this.#armStallTimer();
 			try {
 				const processed = await processImageFile(file, colorSpace);
 				const photo: Photo = {
@@ -76,6 +95,7 @@ export class Importer {
 					fileSize: file.size
 				};
 				await addPhotoToProject(this.#projectId, photo, processed.blobs);
+				this.stored++;
 				this.#onPhoto(photo);
 			} catch (error) {
 				console.error(error);
@@ -84,8 +104,25 @@ export class Importer {
 					reason: error instanceof Error ? error.message : String(error)
 				});
 			}
+			clearTimeout(this.#stallTimer);
+			this.stalled = false;
 			this.done++;
 		}
 		this.current = null;
+		clearImportMarker();
+	}
+
+	/** "Keep waiting": hide the warning, and show it again if the photo stays stuck. */
+	keepWaiting() {
+		this.stalled = false;
+		if (this.running) this.#armStallTimer();
+	}
+
+	#armStallTimer() {
+		clearTimeout(this.#stallTimer);
+		this.#stallTimer = setTimeout(() => {
+			this.stallInfo = { name: this.current ?? '', stored: this.stored };
+			this.stalled = true;
+		}, STALL_MS);
 	}
 }

@@ -7,6 +7,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Progress } from '#lib/components/ui/progress/index.js';
 	import * as Drawer from '#lib/components/ui/drawer/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import StoredImage from '#lib/components/app/StoredImage.svelte';
 	import { Importer } from '#lib/import/importer.svelte.ts';
@@ -66,6 +67,12 @@
 		await removePhotoFromProject(projectId, photo.id);
 		revokeImageUrls(photo.id);
 		photos = photos.filter((p) => p.id !== photo.id);
+	}
+
+	function savedSoFar(n: number) {
+		if (n === 0) return 'Reloading is safe. You can pick the photos again afterwards.';
+		const photos = n === 1 ? 'The 1 photo' : `The ${n} photos`;
+		return `Reloading is safe. ${photos} imported so far ${n === 1 ? 'is' : 'are'} saved, and you can add the rest afterwards.`;
 	}
 
 	const missingDates = $derived(photos.filter((p) => p.capturedAt === undefined).length);
@@ -169,6 +176,24 @@
 		</div>
 	</div>
 {/if}
+
+<!-- The worker gives no signal if iOS kills it, so a photo that takes far too long is the cue. -->
+<AlertDialog.Root open={importer.stalled} onOpenChange={(open) => !open && importer.keepWaiting()}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>This import is taking longer than expected</AlertDialog.Title>
+			<AlertDialog.Description class="wrap-break-word">
+				Strip may have run out of memory on “{importer.stallInfo.name}”. {savedSoFar(
+					importer.stallInfo.stored
+				)}
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Keep waiting</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={() => location.reload()}>Reload app</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 <Drawer.Root open={selected !== null} onOpenChange={(open) => !open && (selected = null)}>
 	<Drawer.Content>

@@ -4,6 +4,7 @@
 	import type { LayoutProps } from './$types';
 	import { Toaster } from '#lib/components/ui/sonner/index.js';
 	import ReloadPrompt from '#lib/components/app/ReloadPrompt.svelte';
+	import ImportRecovery from '#lib/components/app/ImportRecovery.svelte';
 
 	let { children }: LayoutProps = $props();
 </script>
@@ -20,3 +21,4 @@
 	mobileOffset={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
 />
 <ReloadPrompt />
+<ImportRecovery />
