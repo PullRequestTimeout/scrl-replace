@@ -9,6 +9,7 @@
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
+	import GettingStarted from '#lib/components/app/GettingStarted.svelte';
 	import InstallHint from '#lib/components/app/InstallHint.svelte';
 	import RenameDialog from '#lib/components/app/RenameDialog.svelte';
 	import StoredImage from '#lib/components/app/StoredImage.svelte';
@@ -85,9 +86,9 @@
 			<ImagesIcon class="size-10 text-muted-foreground" aria-hidden="true" />
 			<h2 class="text-lg font-semibold">No projects yet</h2>
 			<p class="max-w-xs text-sm text-muted-foreground">
-				Start a project, pick 10–25 edited photos from a shoot, and build a grid row and three
-				carousels from them.
+				Turn a shoot into a profile grid row and three carousels in four steps.
 			</p>
+			<GettingStarted current={0} class="mt-2 w-full max-w-xs" />
 			<Button class="mt-2" onclick={newProject}><PlusIcon /> New project</Button>
 		</div>
 	{:else}

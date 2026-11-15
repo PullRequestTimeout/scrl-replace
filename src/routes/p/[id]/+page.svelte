@@ -9,6 +9,7 @@
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import CarouselStrip from '#lib/components/app/CarouselStrip.svelte';
 	import GridRowPreview from '#lib/components/app/GridRowPreview.svelte';
+	import GettingStarted from '#lib/components/app/GettingStarted.svelte';
 	import { ProjectData } from '#lib/stores/project-data.svelte.ts';
 	import { loadPreviewSources } from '#lib/render/preview-cache.ts';
 	import type { DrawSource } from '#lib/render/draw.ts';
@@ -185,12 +186,21 @@
 					Missing: {data.referenceMissing.map((p) => p.name).join(', ')}
 				</p>
 			</section>
+		{:else if data.photos.length === 0}
+			<section class="mx-4 flex flex-col gap-4 rounded-lg border bg-card p-4 text-sm">
+				<h2 class="font-medium">Start with your photos</h2>
+				<GettingStarted current={0} />
+				<a href="/p/{project.id}/import" class={buttonVariants()}>
+					<ImagesIcon /> Import photos
+				</a>
+			</section>
 		{:else}
 			<section class="mx-4 flex flex-col gap-2 rounded-lg border bg-card p-4 text-sm">
 				<h2 class="font-medium">No carousels yet</h2>
+				<GettingStarted current={1} class="my-2" />
 				<p class="text-muted-foreground">
-					{data.photos.length} photos imported. Get suggested grid rows and layouts, or lay out the three
-					carousels yourself.
+					{data.photos.length} photo{data.photos.length === 1 ? '' : 's'} imported. Get suggested grid
+					rows and layouts, or lay out the three carousels yourself.
 				</p>
 				{#if data.photos.length >= 3}
 					<a href="/p/{project.id}/row" class={buttonVariants({ class: 'mt-1' })}>
