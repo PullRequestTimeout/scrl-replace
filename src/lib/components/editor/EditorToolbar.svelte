@@ -15,6 +15,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Slider } from '#lib/components/ui/slider/index.js';
 	import type { Editor } from '#lib/editor/editor.svelte.ts';
+	import type { Carousel } from '#lib/model/layout.ts';
 	import type { Photo, PhotoId } from '#lib/model/types.ts';
 	import { CENTRED } from '#lib/model/layout.ts';
 	import {
@@ -74,7 +75,25 @@
 		return null;
 	});
 
-	function setCropZoom(zoom: number) {
+	/**
+	 * Sliders preview live while dragging and commit as a single undo step on release
+	 * (keyboard arrows fire change + commit too, so they also work).
+	 */
+	let sliding = false;
+	function slide(next: Carousel) {
+		if (!sliding) {
+			editor.beginGesture();
+			sliding = true;
+		}
+		editor.preview(next);
+	}
+	function endSlide() {
+		if (!sliding) return;
+		sliding = false;
+		editor.endGesture();
+	}
+
+	function previewCropZoom(zoom: number) {
 		const info = cropInfo;
 		if (!info) return;
 		const crop = zoomCrop(
@@ -85,8 +104,8 @@
 			info.crop,
 			zoom
 		);
-		if (frame) editor.apply(setFrameCrop(editor.carousel, frame.id, crop));
-		else if (bgIndex >= 0) editor.apply(setBackgroundCrop(editor.carousel, bgIndex, crop));
+		if (frame) slide(setFrameCrop(editor.carousel, frame.id, crop));
+		else if (bgIndex >= 0) slide(setBackgroundCrop(editor.carousel, bgIndex, crop));
 	}
 
 	function resetCrop() {
@@ -131,7 +150,8 @@
 				max={MAX_ZOOM}
 				step={0.01}
 				value={cropInfo.crop.zoom}
-				onValueCommit={(v: number) => setCropZoom(v)}
+				onValueChange={(v: number) => previewCropZoom(v)}
+				onValueCommit={endSlide}
 				class="flex-1"
 				aria-label="Crop zoom"
 			/>
@@ -150,7 +170,8 @@
 				max={Math.round(frame.h / 8)}
 				step={1}
 				value={frame.border}
-				onValueCommit={(v: number) => editor.apply(setFrameBorder(editor.carousel, frame.id, v))}
+				onValueChange={(v: number) => slide(setFrameBorder(editor.carousel, frame.id, v))}
+				onValueCommit={endSlide}
 				class="flex-1"
 				aria-label="Border width"
 			/>

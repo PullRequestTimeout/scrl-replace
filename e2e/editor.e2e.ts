@@ -76,6 +76,19 @@ test('builds a carousel by hand: fill, add frame, drag, undo/redo, crop, add sli
 	await expect(page.getByRole('dialog')).toBeHidden();
 	await expect(page.getByRole('slider', { name: 'Border width' })).toBeVisible();
 	await expect.poll(async () => (await savedCarousel(page))?.frames.length).toBe(1);
+	// Border slider: the px label updates while dragging, and the drag is one undo step.
+	const thumb = page.getByRole('slider', { name: 'Border width' });
+	const label = page.getByText(/^\d+px$/);
+	const startLabel = await label.innerText();
+	const t = (await thumb.boundingBox())!;
+	await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2);
+	await page.mouse.down();
+	for (let i = 1; i <= 6; i++) await page.mouse.move(t.x + t.width / 2 + i * 8, t.y + t.height / 2);
+	await expect(label).not.toHaveText(startLabel); // still holding
+	await page.mouse.up();
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(label).toHaveText(startLabel);
+
 	const before = (await savedCarousel(page))!.frames[0];
 
 	// Drag the frame right and down.
