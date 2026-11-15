@@ -96,6 +96,18 @@ export async function getPhotos(ids: PhotoId[]): Promise<Photo[]> {
 	return photos.filter((p): p is Photo => !!p);
 }
 
+/** Store analysis results for existing photos. */
+export async function savePhotoAnalyses(
+	results: Record<PhotoId, Photo['analysis']>
+): Promise<void> {
+	const tx = (await db()).transaction('photos', 'readwrite');
+	for (const [id, analysis] of Object.entries(results)) {
+		const photo = await tx.store.get(id);
+		if (photo) await tx.store.put({ ...photo, analysis });
+	}
+	await tx.done;
+}
+
 export async function getBlob(id: PhotoId, variant: ImageVariant): Promise<Blob | undefined> {
 	return (await db()).get('blobs', blobKey(id, variant));
 }

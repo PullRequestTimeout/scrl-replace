@@ -1,5 +1,7 @@
 import type { Photo, Project, ProjectId } from '#lib/model/types.ts';
-import { getPhotos, getProject, saveProject } from '#lib/storage/projects.ts';
+import { getPhotos, getProject, saveProject, savePhotoAnalyses } from '#lib/storage/projects.ts';
+import { hasCurrentAnalysis } from '#lib/layout/types.ts';
+import { imageWorker } from '#lib/workers/client.ts';
 import { buildReferenceCarousels, matchReferencePhotos } from '#lib/fixtures/reference.ts';
 import type { ReferencePhoto } from '#lib/fixtures/reference-carousels.ts';
 
@@ -29,6 +31,25 @@ export class ProjectData {
 		this.project = project;
 		if (project.kind === 'reference') await this.syncReference();
 		this.loaded = true;
+	}
+
+	/** Photos analysed so far / needing analysis, for progress display. */
+	analysing = $state<{ done: number; total: number } | null>(null);
+
+	/** Analyse any photos imported before analysis existed (or with an outdated version). */
+	async ensureAnalysis() {
+		const missing = this.photos.filter((p) => !hasCurrentAnalysis(p));
+		if (!missing.length) return;
+		this.analysing = { done: 0, total: missing.length };
+		const BATCH = 4;
+		for (let i = 0; i < missing.length; i += BATCH) {
+			const ids = missing.slice(i, i + BATCH).map((p) => p.id);
+			const results = await imageWorker().analyzeStored(ids);
+			await savePhotoAnalyses(results);
+			this.photos = this.photos.map((p) => (results[p.id] ? { ...p, analysis: results[p.id] } : p));
+			this.analysing = { done: Math.min(missing.length, i + BATCH), total: missing.length };
+		}
+		this.analysing = null;
 	}
 
 	photoMap(): Map<string, Photo> {

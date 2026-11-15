@@ -70,6 +70,7 @@ export class Importer {
 					workingHeight: processed.workingHeight,
 					capturedAt: processed.capturedAt,
 					exifDate: processed.exifDate,
+					analysis: processed.analysis,
 					importedAt: Date.now(),
 					importIndex: index++,
 					fileSize: file.size

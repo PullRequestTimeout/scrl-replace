@@ -7,7 +7,8 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import { toast } from 'svelte-sonner';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import SlideCanvas from '#lib/components/app/SlideCanvas.svelte';
 	import EditorCanvas, { type Zoom } from '#lib/components/editor/EditorCanvas.svelte';
@@ -227,6 +228,13 @@
 				<Redo2Icon />
 			</Button>
 		{/if}
+		<a
+			href="/p/{page.params.id}/c/{index + 1}/layouts"
+			class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+			aria-label="Other layouts"
+		>
+			<SparklesIcon />
+		</a>
 		<Button
 			variant="ghost"
 			size="icon"

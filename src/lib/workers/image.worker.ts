@@ -20,11 +20,20 @@ import {
 	CENTRED,
 	frameOuter,
 	intersects,
+	type Background,
 	type Carousel
 } from '#lib/model/layout.ts';
 import type { PhotoId } from '#lib/model/types.ts';
 import { drawCarousel, type DrawSource } from '#lib/render/draw.ts';
 import { getBlob } from '#lib/storage/projects.ts';
+import { analyzePixels } from '#lib/analysis/features.ts';
+import type { PhotoAnalysis } from '#lib/analysis/types.ts';
+import { suggestRows, type Pins, type RowMode } from '#lib/layout/row.ts';
+import { assignPhotos } from '#lib/layout/assign.ts';
+import { suggestCarousels } from '#lib/layout/carousel.ts';
+import type { LayoutPhoto } from '#lib/layout/types.ts';
+import { rowTiles, type GridRow } from '#lib/model/row.ts';
+import { DEFAULT_PRESET } from '#lib/model/presets.ts';
 
 export interface ProcessedImage {
 	width: number;
@@ -33,6 +42,7 @@ export interface ProcessedImage {
 	workingHeight: number;
 	capturedAt?: number;
 	exifDate?: string;
+	analysis: PhotoAnalysis;
 	blobs: Record<ImageVariant, Blob>;
 }
 
@@ -138,6 +148,7 @@ async function encodeVariants(
 	const preview = downscale(working, workingSize, previewSize, colorSpace);
 	const thumbSize = fitWithin(previewSize, THUMB_LONG_EDGE);
 	const thumb = downscale(preview, previewSize, thumbSize, colorSpace);
+	const analysis = analyzeCanvas(thumb);
 
 	const [workingBlob, previewBlob, thumbBlob] = await Promise.all([
 		toJpeg(working),
@@ -152,6 +163,7 @@ async function encodeVariants(
 		...original,
 		workingWidth: workingSize.width,
 		workingHeight: workingSize.height,
+		analysis,
 		blobs: { working: workingBlob, preview: previewBlob, thumb: thumbBlob }
 	};
 }
@@ -203,7 +215,69 @@ function photosOnSlide(carousel: Carousel, slide: number): PhotoId[] {
 	];
 }
 
+function analyzeCanvas(canvas: OffscreenCanvas): PhotoAnalysis {
+	const ctx = canvas.getContext('2d')!;
+	const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	return analyzePixels({ data, width, height });
+}
+
 const api = {
+	/** Analyse already-imported photos from their stored thumbnails. */
+	async analyzeStored(ids: PhotoId[]): Promise<Record<PhotoId, PhotoAnalysis>> {
+		const out: Record<PhotoId, PhotoAnalysis> = {};
+		for (const id of ids) {
+			const blob = await getBlob(id, 'thumb');
+			if (!blob) continue;
+			const bitmap = await createImageBitmap(blob);
+			const [canvas, ctx] = makeCanvas({ width: bitmap.width, height: bitmap.height });
+			ctx.drawImage(bitmap, 0, 0);
+			bitmap.close();
+			out[id] = analyzeCanvas(canvas);
+			release(canvas);
+		}
+		return out;
+	},
+
+	suggestRows(photos: LayoutPhoto[], options: { pins?: Pins; mode?: RowMode; count?: number }) {
+		return suggestRows(photos, options);
+	},
+
+	/**
+	 * Given a chosen row: share the photos out, then suggest layouts for each carousel.
+	 * Returns the assignment and the suggestions per carousel (best first).
+	 */
+	planCarousels(row: GridRow, photos: LayoutPhoto[], seed = 1) {
+		const map = new Map(photos.map((p) => [p.id, p]));
+		const assignment = assignPhotos(row, photos);
+		const tiles = rowTiles(row, (id) => map.get(id)!);
+		const suggestions = tiles.map((tile, i) =>
+			suggestCarousels(
+				{
+					tile,
+					photos: assignment[i].map((id) => map.get(id)!),
+					photoMap: map,
+					preset: DEFAULT_PRESET
+				},
+				{ count: 4, tries: 250, seed: seed + i }
+			).map((s) => s.carousel)
+		);
+		return { assignment, suggestions };
+	},
+
+	/** More layouts for one carousel, keeping its photos. */
+	suggestFor(tile: Background, photoIds: PhotoId[], photos: LayoutPhoto[], seed: number) {
+		const map = new Map(photos.map((p) => [p.id, p]));
+		return suggestCarousels(
+			{
+				tile,
+				photos: photoIds.map((id) => map.get(id)!).filter(Boolean),
+				photoMap: map,
+				preset: DEFAULT_PRESET
+			},
+			{ count: 4, tries: 250, seed }
+		).map((s) => s.carousel);
+	},
+
 	/** Decode, read capture time and encode stored copies. Throws if this browser can't decode the file in a worker. */
 	async processFile(file: Blob, colorSpace: ColorSpace = 'srgb'): Promise<ProcessedImage> {
 		const [bitmap, date] = await Promise.all([

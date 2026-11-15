@@ -15,6 +15,7 @@
 	import { blankCarousel } from '#lib/editor/ops.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
 	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 
 	const data = new ProjectData(page.params.id ?? '');
 	let sources = $state(new Map<string, DrawSource>());
@@ -55,7 +56,16 @@
 		{#if carousels}
 			<section class="flex flex-col gap-2">
 				<div class="flex items-center justify-between px-4">
-					<h2 class="text-sm font-medium">Grid row</h2>
+					<div class="flex items-center gap-2">
+						<h2 class="text-sm font-medium">Grid row</h2>
+						{#if project.kind !== 'reference' && data.photos.length >= 3}
+							<a
+								href="/p/{project.id}/row"
+								class="text-xs text-muted-foreground underline underline-offset-4"
+								>New suggestions</a
+							>
+						{/if}
+					</div>
 					<div class="flex rounded-md border p-0.5 text-xs" role="group" aria-label="Grid row view">
 						<button
 							type="button"
@@ -114,10 +124,19 @@
 			<section class="mx-4 flex flex-col gap-2 rounded-lg border bg-card p-4 text-sm">
 				<h2 class="font-medium">No carousels yet</h2>
 				<p class="text-muted-foreground">
-					{data.photos.length} photos imported. Suggestions arrive in Phase 4; for now you can lay out
-					the three carousels yourself.
+					{data.photos.length} photos imported. Get suggested grid rows and layouts, or lay out the three
+					carousels yourself.
 				</p>
-				<Button class="mt-1" disabled={data.photos.length === 0} onclick={buildByHand}>
+				{#if data.photos.length >= 3}
+					<a href="/p/{project.id}/row" class={buttonVariants({ class: 'mt-1' })}>
+						<SparklesIcon /> Suggest layouts
+					</a>
+				{/if}
+				<Button
+					variant={data.photos.length >= 3 ? 'outline' : 'default'}
+					disabled={data.photos.length === 0}
+					onclick={buildByHand}
+				>
 					<PencilRulerIcon /> Build by hand
 				</Button>
 			</section>
