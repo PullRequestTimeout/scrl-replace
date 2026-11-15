@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
+	import SubjectDetectionSettings from '#lib/components/app/SubjectDetectionSettings.svelte';
 	import { createProject, saveProject } from '#lib/storage/projects.ts';
 	import { REFERENCE_PROJECT_NAME } from '#lib/fixtures/reference.ts';
 	import { getColorSpace, setColorSpace } from '#lib/settings.ts';
@@ -114,6 +115,8 @@
 		</div>
 		<a href="/settings/colour" class="text-sm underline underline-offset-4">Run the colour test</a>
 	</section>
+
+	<SubjectDetectionSettings />
 
 	<section class="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm">
 		<h2 class="font-medium">Reference carousels</h2>
