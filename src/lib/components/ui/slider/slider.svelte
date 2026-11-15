@@ -8,8 +8,16 @@
 		orientation = 'horizontal',
 		class: className,
 		'aria-label': ariaLabel,
+		thumbLabels,
+		valueText,
 		...restProps
-	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> & { 'aria-label'?: string } = $props();
+	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> & {
+		'aria-label'?: string;
+		/** Per-thumb labels for a range slider, e.g. ['Minimum', 'Maximum']. */
+		thumbLabels?: string[];
+		/** Spoken value with its unit, e.g. 0.6 → "60%". */
+		valueText?: (value: number) => string;
+	} = $props();
 </script>
 
 <!--
@@ -44,8 +52,9 @@ get along, so we shut typescript up by casting `value` to `never`.
 			<SliderPrimitive.Thumb
 				data-slot="slider-thumb"
 				index={thumb.index}
-				aria-label={ariaLabel}
-				class="block size-4 shrink-0 rounded-full border border-primary bg-white shadow-sm ring-ring/50 transition-[color,box-shadow] select-none hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
+				aria-label={thumbLabels?.[thumb.index] ?? ariaLabel}
+				aria-valuetext={valueText?.(thumb.value)}
+				class="block size-5 shrink-0 rounded-full border border-primary bg-white shadow-sm ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2.5 after:content-[''] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
 			/>
 		{/each}
 	{/snippet}

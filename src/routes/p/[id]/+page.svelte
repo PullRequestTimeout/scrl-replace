@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import ShareIcon from '@lucide/svelte/icons/share';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -16,10 +18,34 @@
 	import { saveProject } from '#lib/storage/projects.ts';
 	import PencilRulerIcon from '@lucide/svelte/icons/pencil-ruler';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import { listPresets } from '#lib/storage/presets.ts';
+	import { DEFAULT_PRESET_ID, type StylePreset } from '#lib/model/presets.ts';
 
 	const data = new ProjectData(page.params.id ?? '');
 	let sources = $state(new Map<string, DrawSource>());
 	let rowMode = $state<'grid' | 'full'>('grid');
+	let presets = $state<StylePreset[]>([]);
+
+	$effect(() => {
+		void listPresets().then((list) => (presets = list));
+	});
+
+	/** A deleted preset reads as the built-in one, which is what suggestions fall back to. */
+	const presetId = $derived(
+		presets.some((p) => p.id === data.project?.presetId)
+			? data.project!.presetId
+			: DEFAULT_PRESET_ID
+	);
+	const presetName = $derived(presets.find((p) => p.id === presetId)?.name ?? '');
+
+	async function choosePreset(id: string) {
+		if (!data.project || id === data.project.presetId) return;
+		data.project = await saveProject({ ...$state.snapshot(data.project), presetId: id });
+		const name = presets.find((p) => p.id === id)?.name;
+		if (name) toast.success(`New suggestions will use “${name}”`);
+	}
 
 	$effect(() => {
 		void (async () => {
@@ -53,6 +79,36 @@
 			This project no longer exists. <a class="underline" href="/">Back to projects</a>
 		</p>
 	{:else if data.loaded && project}
+		{#if project.kind !== 'reference' && presets.length}
+			<div class="-mb-2 flex items-center justify-between gap-3 px-4">
+				<div class="min-w-0">
+					<p class="text-sm font-medium">Style</p>
+					<p class="text-xs text-muted-foreground">Used for new suggestions</p>
+				</div>
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger
+						class="flex min-h-10 max-w-[60%] items-center gap-1.5 rounded-md border px-3 text-sm"
+						aria-label="Style for suggestions: {presetName}"
+					>
+						<span class="truncate">{presetName}</span>
+						<ChevronDownIcon class="size-4 shrink-0" aria-hidden="true" />
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="start">
+						<DropdownMenu.RadioGroup value={presetId} onValueChange={choosePreset}>
+							{#each presets as preset (preset.id)}
+								<DropdownMenu.RadioItem value={preset.id} closeOnSelect>
+									{preset.name}
+								</DropdownMenu.RadioItem>
+							{/each}
+						</DropdownMenu.RadioGroup>
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item onclick={() => goto('/settings/presets')}>
+							Edit styles…
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			</div>
+		{/if}
 		{#if carousels}
 			<section class="flex flex-col gap-2">
 				<div class="flex items-center justify-between px-4">

@@ -2,6 +2,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Progress } from '#lib/components/ui/progress/index.js';
 	import { goto } from '$app/navigation';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import { createProject, saveProject } from '#lib/storage/projects.ts';
 	import { REFERENCE_PROJECT_NAME } from '#lib/fixtures/reference.ts';
@@ -78,6 +79,19 @@
 			Delete projects from the Projects screen to free space.
 		</p>
 	</section>
+
+	<a
+		href="/settings/presets"
+		class="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 text-sm outline-none hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+	>
+		<span>
+			<span class="block font-medium">Styles</span>
+			<span class="text-muted-foreground">
+				Frame sizes, background spans and rule priorities used for suggestions.
+			</span>
+		</span>
+		<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+	</a>
 
 	<section class="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm">
 		<h2 class="font-medium">Colour</h2>
