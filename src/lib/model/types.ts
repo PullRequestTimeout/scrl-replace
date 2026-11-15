@@ -1,4 +1,6 @@
 import type { Carousel } from './layout.ts';
+import type { GridRow } from './row.ts';
+import type { PhotoAnalysis } from '#lib/analysis/types.ts';
 
 export type PhotoId = string;
 export type ProjectId = string;
@@ -22,8 +24,8 @@ export interface Photo {
 	/** Position in the original import, used as the neutral ordering when capture time is missing. */
 	importIndex: number;
 	fileSize: number;
-	/** Filled in by the analysis pass (Phase 4). */
-	analysis?: unknown;
+	/** Image statistics for suggestions; recomputed when ANALYSIS_VERSION changes. */
+	analysis?: PhotoAnalysis;
 }
 
 export interface Project {
@@ -35,8 +37,10 @@ export interface Project {
 	presetId: string;
 	/** 'reference' = rebuilt from your SCRL originals, used to calibrate and test. */
 	kind?: 'reference';
-	/** Phase 4: grid row choice. */
-	row: unknown | null;
+	/** The chosen grid row, if suggestions were used. */
+	row: GridRow | null;
+	/** Which photos belong to each carousel (left, middle, right), excluding the row's own. */
+	assignment?: [PhotoId[], PhotoId[], PhotoId[]] | null;
 	pinnedTiles: [PhotoId | null, PhotoId | null, PhotoId | null];
 	/** Left, middle, right: each carousel's first slide is that grid tile. */
 	carousels: [Carousel, Carousel, Carousel] | null;

@@ -1,6 +1,6 @@
 # SCRL Replacement: Build Plan
 
-Status: **Phases 1–3 built. Exports at 2x (2160×2700), sRGB. Phase 3 waiting for the on-iPhone check.**
+Status: **Phases 1–4 built. Phase 4 (suggestions) waiting for the on-iPhone check.**
 
 ## 1. Goal
 
@@ -27,24 +27,24 @@ The app suggests options, you adjust them, and it exports 1080×1350 slides to P
 
 These rules come from measuring your three exported carousels. They drive both the suggestions and the checks that keep layouts valid.
 
-| #   | Rule                                                                                                                                                                                    | Hard / soft                    |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| R1  | A slide is 1080×1350. A carousel has 3–10 slides and is treated as one horizontal strip `slideCount × 1080` wide.                                                                       | Hard                           |
-| R2  | Every pixel of the strip is covered by background photos, which fill their area edge to edge with no gaps.                                                                              | Hard                           |
-| R3  | Slide 1 (the grid tile) is one background photo with nothing on top of it.                                                                                                              | Hard                           |
-| R4  | The last slide is mostly clear. A frame may reach in a little.                                                                                                                          | Soft                           |
-| R5  | A landscape background spans about 1.3–2.2 slides. A portrait background spans about 0.8–1.1 slides.                                                                                    | Soft                           |
-| R6  | Joins between background photos land away from slide edges (at least 120 px from one).                                                                                                  | Soft                           |
-| R7  | A frame has a white border, no shadow. Measured from your posts: the border scales with the frame, about 3% of its outer height (22 px on ~580 px frames, 29–35 px on ~1100 px frames). | Preset                         |
-| R8  | A frame crosses at least one slide edge, with at least 15% of its width on each side.                                                                                                   | Hard-ish (strong penalty)      |
-| R9  | A frame preferably covers a join between background photos. (In your posts, every join not on a slide edge is hidden under a frame.)                                                    | Soft (strong)                  |
-| R10 | A frame sits fully inside the slide top to bottom, at least 40 px from the top and bottom edges.                                                                                        | Hard                           |
-| R11 | A frame is 50–90% of the slide height.                                                                                                                                                  | Soft                           |
-| R12 | A frame doesn't cover the subject of the background behind it, and sits over quieter areas instead.                                                                                     | Soft (strong)                  |
-| R13 | A frame contrasts with its background: colour over black-and-white or the reverse, or else a clear difference in brightness or colour.                                                  | Soft                           |
-| R14 | Frames don't overlap each other. There's at least 0.3 of a slide between them.                                                                                                          | Hard                           |
-| R15 | There are about `round(photos / 3)` frames per carousel, and about `photos − 1` slides.                                                                                                 | Soft (sets the starting count) |
-| R16 | Two near-duplicate photos never sit next to each other.                                                                                                                                 | Soft                           |
+| #   | Rule                                                                                                                                                                                                                                             | Hard / soft                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| R1  | A slide is 1080×1350. A carousel has 3–10 slides and is treated as one horizontal strip `slideCount × 1080` wide.                                                                                                                                | Hard                           |
+| R2  | Every pixel of the strip is covered by background photos, which fill their area edge to edge with no gaps.                                                                                                                                       | Hard                           |
+| R3  | Slide 1 (the grid tile) is one background photo with nothing on top of it.                                                                                                                                                                       | Hard                           |
+| R4  | The last slide is mostly clear. A frame may reach in a little.                                                                                                                                                                                   | Soft                           |
+| R5  | A landscape background spans about 1.3–2.2 slides. A portrait background spans about 0.8–1.1 slides.                                                                                                                                             | Soft                           |
+| R6  | Joins between background photos land away from slide edges (at least 120 px from one).                                                                                                                                                           | Soft                           |
+| R7  | A frame has a white border, no shadow. Measured from your posts: the border scales with the frame, about 3% of its outer height (22 px on ~580 px frames, 29–35 px on ~1100 px frames).                                                          | Preset                         |
+| R8  | **Corrected after calibration:** most frames (5 of 6 in your posts) sit centred on one slide, horizontally and vertically, at ~75–88% of its height, hiding a background join. Occasionally a smaller frame sits off-centre across a slide edge. | Soft (strong)                  |
+| R9  | A frame preferably covers a join between background photos. (In your posts, every join not on a slide edge is hidden under a frame.)                                                                                                             | Soft (strong)                  |
+| R10 | A frame sits fully inside the slide top to bottom, at least 40 px from the top and bottom edges.                                                                                                                                                 | Hard                           |
+| R11 | A frame is 40–90% of the slide height (your smaller landscape frames are ~42%).                                                                                                                                                                  | Soft                           |
+| R12 | A frame doesn't cover the subject of the background behind it, and sits over quieter areas instead.                                                                                                                                              | Soft (strong)                  |
+| R13 | A frame contrasts with its background: colour over black-and-white or the reverse, or else a clear difference in brightness or colour.                                                                                                           | Soft                           |
+| R14 | Frames don't overlap each other. There's at least 0.3 of a slide between them.                                                                                                                                                                   | Hard                           |
+| R15 | There are about `round(photos / 3)` frames per carousel, and about `photos − 1` slides.                                                                                                                                                          | Soft (sets the starting count) |
+| R16 | Two near-duplicate photos never sit next to each other.                                                                                                                                                                                          | Soft                           |
 
 Your examples matched these numbers: 4 slides with 5 photos (3 backgrounds and 2 frames), 6 slides with 6 photos, and 5 slides with 6 photos.
 
