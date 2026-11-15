@@ -171,11 +171,12 @@ class SubjectDetection {
 			writePref(PREF_KEY, 'on');
 			this.status = 'on';
 		} catch (err) {
+			console.warn('Subject detection setup failed', err);
 			this.#dropWorker();
 			this.reason =
 				typeof navigator !== 'undefined' && !navigator.onLine
-					? 'You’re offline. Connect to download the model.'
-					: `Couldn’t set it up (${err instanceof Error ? err.message : String(err)}).`;
+					? 'You’re offline. Connect to the internet to download the model.'
+					: 'Couldn’t set up subject detection. Check your connection and try again.';
 			this.status = 'error';
 		}
 	}
