@@ -3,9 +3,10 @@ import { analyzePixels } from '#lib/analysis/features.ts';
 import { fitWithin } from '#lib/images/geometry.ts';
 import { WORKING_LONG_EDGE } from '#lib/model/constants.ts';
 import { rowPhotos, rowTiles } from '#lib/model/row.ts';
-import { frameOuter } from '#lib/model/layout.ts';
+import { backgroundRect, frameOuter } from '#lib/model/layout.ts';
 import { DEFAULT_PRESET } from '#lib/model/presets.ts';
 import { suggestCarousels } from './carousel.ts';
+import { hiddenShare } from './score.ts';
 import { fixturePixels, fixtureSet } from '#lib/testing/fixtures.ts';
 import { assignPhotos } from './assign.ts';
 import { canSplit, suggestRows } from './row.ts';
@@ -92,12 +93,13 @@ describe.skipIf(EXAMPLE.length === 0)('row suggestions on the example gallery', 
 		}
 	});
 
-	it('mostly sets B&W frames on colour backgrounds and colour frames on B&W, landscapes behind', () => {
+	it('mostly sets B&W frames on colour backgrounds and colour frames on B&W, landscapes behind, no background buried', () => {
 		const byId = new Map(photos.map((p) => [p.id, p]));
 		let frames = 0;
 		let contrasting = 0;
 		let landscapes = 0;
 		let landscapesFramed = 0;
+		let worstHidden = 0;
 		for (const { row } of suggestRows(photos, { count: 4 })) {
 			const groups = assignPhotos(row, photos);
 			rowTiles(row, (id) => byId.get(id)!).forEach((tile, i) => {
@@ -112,6 +114,11 @@ describe.skipIf(EXAMPLE.length === 0)('row suggestions on the example gallery', 
 				);
 				const c = best.carousel;
 				const framed = new Set(c.frames.map((f) => f.photoId));
+				for (const b of c.backgrounds.slice(1))
+					worstHidden = Math.max(
+						worstHidden,
+						hiddenShare(backgroundRect(b), c.frames.map(frameOuter))
+					);
 				for (const id of groups[i]) {
 					const p = byId.get(id)!;
 					if (p.width / p.height < 1.15) continue;
@@ -131,5 +138,6 @@ describe.skipIf(EXAMPLE.length === 0)('row suggestions on the example gallery', 
 		}
 		expect(contrasting / frames).toBeGreaterThanOrEqual(0.6);
 		expect(landscapesFramed / landscapes).toBeLessThanOrEqual(0.1);
+		expect(worstHidden).toBeLessThanOrEqual(0.7);
 	});
 });

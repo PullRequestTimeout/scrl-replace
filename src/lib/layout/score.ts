@@ -82,6 +82,22 @@ function intersect(a: Rect, b: Rect): Rect | null {
 	return w > 0 && h > 0 ? { x, y, w, h } : null;
 }
 
+/**
+ * Share of a background frames may hide before it counts against a layout. One reference
+ * post hides ~53% of a background, so the line sits just above that.
+ */
+export const HIDDEN_FREE = 0.55;
+
+/** Share of `rect` covered by `covers` (frames don't overlap each other). */
+export function hiddenShare(rect: Rect, covers: Rect[]): number {
+	let area = 0;
+	for (const c of covers) {
+		const o = intersect(rect, c);
+		if (o) area += o.w * o.h;
+	}
+	return area / (rect.w * rect.h);
+}
+
 /** How much a photo is enlarged past its stored copy at export size (0 = none). */
 function upscaleOf(photo: LayoutPhoto, box: Rect, crop: Crop): number {
 	const src = cropSource(photo.width, photo.height, box.w, box.h, crop);
@@ -159,6 +175,18 @@ export function scoreCarousel(
 				weight += areaShare;
 			}
 			return weight ? Math.min(1, excess / weight) : 0;
+		})
+	);
+
+	// The worst-hidden background (not the grid tile): 0 up to 55% covered by frames, 1 by 85%.
+	const backgroundHidden = Math.max(
+		0,
+		...bgs.slice(1).map(({ rect }) => {
+			const share = hiddenShare(
+				rect,
+				frames.map(({ outer }) => outer)
+			);
+			return Math.min(1, Math.max(0, (share - HIDDEN_FREE) / 0.3));
 		})
 	);
 
@@ -255,6 +283,7 @@ export function scoreCarousel(
 		joinNearEdge,
 		framePlacement,
 		frameCoversSubject,
+		backgroundHidden,
 		contrast,
 		frameHeight,
 		bgSpan,

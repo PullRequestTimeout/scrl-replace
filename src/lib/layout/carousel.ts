@@ -7,6 +7,7 @@ import { SLIDE_H, SLIDE_W } from '#lib/model/constants.ts';
 import {
 	CENTRED,
 	cropSource,
+	frameOuter,
 	frameWidth,
 	maxBackgroundWidth,
 	structuralErrors,
@@ -19,7 +20,7 @@ import type { PhotoId } from '#lib/model/types.ts';
 import type { StylePreset } from '#lib/model/presets.ts';
 import { hammingDistance, NEAR_DUPLICATE_BITS } from '#lib/analysis/features.ts';
 import { rng, type Rng } from './rng.ts';
-import { saliencyIn, scoreCarousel, type ScoreResult } from './score.ts';
+import { HIDDEN_FREE, hiddenShare, saliencyIn, scoreCarousel, type ScoreResult } from './score.ts';
 import { aspectOf, type LayoutPhoto } from './types.ts';
 
 export interface CarouselInput {
@@ -225,6 +226,17 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 		}
 		return s;
 	};
+	/** How far past the free share a new frame would leave the worst-hidden background. */
+	const buries = (rect: { x: number; y: number; w: number; h: number }) => {
+		const covers = [...frames.map(frameOuter), rect];
+		let worst = 0;
+		for (const b of backgrounds.slice(1)) {
+			if (rect.x >= b.x1 || rect.x + rect.w <= b.x0) continue;
+			const share = hiddenShare({ x: b.x0, y: 0, w: b.x1 - b.x0, h: SLIDE_H }, covers);
+			worst = Math.max(worst, share - HIDDEN_FREE);
+		}
+		return worst;
+	};
 	const clashes = (fx: number, w: number) =>
 		frames.some((f) => fx < f.x + frameWidth(f) + gap && fx + w + gap > f.x);
 	/** Height so the frame fits, capping width at `maxW`. */
@@ -278,6 +290,7 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 						(slideHasJoin(k) ? 1 : 0) +
 						contrastAt((k + 0.5) * SLIDE_W) * 1 +
 						(k === slideCount - 1 ? -0.6 : 0) + // keep the last slide mostly clear (R4)
+						-buries({ x: (k + 0.5) * SLIDE_W - w / 2, y: (SLIDE_H - h) / 2, w, h }) * 4 +
 						r.range(0, 0.5)
 				}))
 				.sort((a, b) => b.rank - a.rank);
@@ -314,7 +327,10 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 					for (const yFrac of [0.08, 0.5, 0.92]) {
 						const fy = preset.frameMargin + (SLIDE_H - 2 * preset.frameMargin - h) * yFrac;
 						const cost =
-							coveredSaliency({ x: fx, y: fy, w, h }) - contrastAt(edge) * 0.6 + r.range(0, 0.1);
+							coveredSaliency({ x: fx, y: fy, w, h }) +
+							buries({ x: fx, y: fy, w, h }) * 2 -
+							contrastAt(edge) * 0.6 +
+							r.range(0, 0.1);
 						if (cost < bestCost) {
 							bestCost = cost;
 							placed = {

@@ -34,6 +34,8 @@ export interface ScoreWeights {
 	framePlacement: number;
 	/** Penalise frames covering the subject of the background behind (R12). */
 	frameCoversSubject: number;
+	/** Penalise any background left mostly hidden behind frames (worst one, past 55%). */
+	backgroundHidden: number;
 	/** Reward colour/B&W or tonal contrast between a frame and its background (R13). */
 	contrast: number;
 	/** Penalise frames outside the preferred height range (R11). */
@@ -68,6 +70,7 @@ export const DEFAULT_PRESET: StylePreset = {
 		joinNearEdge: 3,
 		framePlacement: 2,
 		frameCoversSubject: 3,
+		backgroundHidden: 3,
 		contrast: 2.5,
 		frameHeight: 1.5,
 		bgSpan: 1,
