@@ -88,6 +88,22 @@ function intersect(a: Rect, b: Rect): Rect | null {
  */
 export const HIDDEN_FREE = 0.55;
 
+/**
+ * The hidden share allowed for one background. With subject detection (or your tag), weak
+ * backgrounds such as mist or a guest book may be covered more and strong ones less.
+ */
+export function hiddenFreeFor(p: LayoutPhoto | undefined): number {
+	return p?.prominence === undefined ? HIDDEN_FREE : 0.75 - 0.35 * p.prominence;
+}
+
+/** How much covering a background's subject costs: 1 when nothing is known about it. */
+export function subjectWeight(p: LayoutPhoto | undefined): number {
+	return p?.prominence === undefined ? 1 : 0.3 + 1.4 * p.prominence;
+}
+
+/** Prominence at or above this counts as a strong subject. */
+export const STRONG_SUBJECT = 0.6;
+
 /** Share of `rect` covered by `covers` (frames don't overlap each other). */
 export function hiddenShare(rect: Rect, covers: Rect[]): number {
 	let area = 0;
@@ -135,6 +151,8 @@ export interface CarouselMeasures {
 		id: string;
 		placement: number;
 		coversSubject: number;
+		/** Like coversSubject, but only over backgrounds with a strong subject (R12 warning). */
+		coversStrong: number;
 		contrast: number;
 		/** Both the frame and the background behind it have analysis (else contrast is 0). */
 		compared: boolean;
@@ -146,6 +164,8 @@ export interface CarouselMeasures {
 		index: number;
 		/** Share hidden by frames. */
 		hidden: number;
+		/** Share that may be hidden before it counts against the layout. */
+		free: number;
 		/** Distance outside the span range (null for the grid tile). */
 		spanOff: number | null;
 		/** Null without a photo. */
@@ -202,8 +222,11 @@ export function measureCarousel(
 
 		// How much more of the backgrounds' "interesting" area a frame hides than an evenly
 		// interesting picture would: 0 = no worse than average, 1 = it sits squarely on the subject.
+		// Weighted by how strong each background's subject is, when that's known.
 		let excess = 0;
 		let weight = 0;
+		let strongExcess = 0;
+		let strongWeight = 0;
 		for (const { b, rect, photo } of bgs) {
 			const overlap = photo && intersect(rect, outer);
 			if (!overlap) continue;
@@ -211,10 +234,16 @@ export function measureCarousel(
 			if (!s.total) continue;
 			const share = s.inside / s.total;
 			const areaShare = (overlap.w * overlap.h) / (rect.w * rect.h);
-			excess += Math.max(0, share / areaShare - 1) * areaShare;
+			const e = Math.max(0, share / areaShare - 1) * areaShare;
+			excess += e * subjectWeight(photo);
 			weight += areaShare;
+			if ((photo.prominence ?? 0) >= STRONG_SUBJECT) {
+				strongExcess += e;
+				strongWeight += areaShare;
+			}
 		}
 		const coversSubject = weight ? Math.min(1, excess / weight) : 0;
+		const coversStrong = strongWeight ? Math.min(1, strongExcess / strongWeight) : 0;
 
 		const fp = photos.get(f.photoId);
 		const under = underCentre(outer);
@@ -229,6 +258,7 @@ export function measureCarousel(
 			id: f.id,
 			placement,
 			coversSubject,
+			coversStrong,
 			contrast,
 			compared: !!fp && !!under,
 			heightOff: distanceOutside(f.h / SLIDE_H, preset.frameHeight) * 3,
@@ -253,6 +283,7 @@ export function measureCarousel(
 		return {
 			index,
 			hidden: hiddenShare(rect, outers),
+			free: hiddenFreeFor(photo),
 			spanOff:
 				index === 0
 					? null
@@ -317,10 +348,11 @@ export function scoreCarousel(
 			0.5
 		),
 		frameCoversSubject: avg(m.frames.map((f) => f.coversSubject)),
-		// The worst-hidden background (not the grid tile): 0 up to 55% covered by frames, 1 by 85%.
+		// The worst-hidden background (not the grid tile): 0 up to its free share (55% unless
+		// its subject strength is known), 1 by 30 points past that.
 		backgroundHidden: Math.max(
 			0,
-			...later.map((b) => Math.min(1, Math.max(0, (b.hidden - HIDDEN_FREE) / 0.3)))
+			...later.map((b) => Math.min(1, Math.max(0, (b.hidden - b.free) / 0.3)))
 		),
 		contrast: avg(m.frames.map((f) => f.contrast)),
 		frameHeight: avg(m.frames.map((f) => f.heightOff)),

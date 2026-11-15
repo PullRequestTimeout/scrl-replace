@@ -6,7 +6,7 @@ import { SLIDE_H, SLIDE_W } from '#lib/model/constants.ts';
 import { frameOuter, stripWidth, type Carousel } from '#lib/model/layout.ts';
 import type { PhotoId } from '#lib/model/types.ts';
 import type { StylePreset } from '#lib/model/presets.ts';
-import { HIDDEN_FREE, measureCarousel, spanRangeFor } from './score.ts';
+import { measureCarousel, spanRangeFor } from './score.ts';
 import type { LayoutPhoto } from './types.ts';
 
 /** Instagram's per-post limit (suggestions stop at MAX_SLIDES in carousel.ts). */
@@ -36,7 +36,9 @@ const LIMITS = {
 	lastSlide: 0.5,
 	// The score measures enlargement at export size (2×); 1 means fewer source pixels than
 	// Instagram's 1080 px display, which is when softness actually shows.
-	upscale: 1
+	upscale: 1,
+	// How squarely a frame sits on a strong background subject (0 = no worse than average).
+	coversStrong: 0.35
 };
 
 export function checkCarousel(
@@ -124,9 +126,10 @@ export function checkCarousel(
 			});
 	});
 
-	// From the scorer's measurements. Left out on purpose: hidden joins (R9), frames covering the
-	// subject and slide edges cutting it (R12, saliency is too rough until AI subject detection),
-	// and frame/background contrast (R13). The scorer still weighs them when suggesting layouts.
+	// From the scorer's measurements. Left out on purpose: hidden joins (R9), slide edges cutting
+	// a subject (saliency alone is too rough), and frame/background contrast (R13). Frames over
+	// a subject (R12) are only flagged when the background is known to have a strong one, from
+	// subject detection or your tag. The scorer still weighs all of them when suggesting layouts.
 	const m = measureCarousel(c, photos, preset);
 
 	// Hiding a join under a frame (R9) is a preference the scorer rewards, not a problem, so it
@@ -164,11 +167,19 @@ export function checkCarousel(
 				message: `${label} has fewer pixels than Instagram shows, so it may look soft.`,
 				target
 			});
+		if (f.coversStrong > LIMITS.coversStrong)
+			out.push({
+				key: `subject-${f.id}`,
+				rule: 'R12',
+				level: 'soft',
+				message: `${label} covers the subject of the photo behind it.`,
+				target
+			});
 	}
 
 	for (const b of m.backgrounds) {
 		const target: WarningTarget = { kind: 'bg', index: b.index };
-		if (b.index > 0 && b.hidden > HIDDEN_FREE)
+		if (b.index > 0 && b.hidden > b.free)
 			out.push({
 				key: `hidden-${b.index}`,
 				rule: 'R17',

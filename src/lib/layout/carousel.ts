@@ -20,7 +20,14 @@ import type { PhotoId } from '#lib/model/types.ts';
 import type { StylePreset } from '#lib/model/presets.ts';
 import { hammingDistance, NEAR_DUPLICATE_BITS } from '#lib/analysis/features.ts';
 import { rng, type Rng } from './rng.ts';
-import { HIDDEN_FREE, hiddenShare, saliencyIn, scoreCarousel, type ScoreResult } from './score.ts';
+import {
+	hiddenFreeFor,
+	hiddenShare,
+	saliencyIn,
+	scoreCarousel,
+	subjectWeight,
+	type ScoreResult
+} from './score.ts';
 import { aspectOf, type LayoutPhoto } from './types.ts';
 
 export interface CarouselInput {
@@ -163,6 +170,9 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 		let s = a < 0.87 ? 0.4 : a < 1.15 ? 0.2 : -0.3;
 		if (p.analysis.shot === 'close') s += 0.2;
 		if (p.workingWidth < 2400) s += 0.3; // small photos look better small
+		// Strong subjects lean towards frames, which are never covered; background material
+		// (mist, textures) towards backgrounds that frames sit on. A nudge, not a rule.
+		if (p.prominence !== undefined) s += (p.prominence - 0.5) * 0.6;
 		return s + r.range(0, 0.8);
 	};
 	const ranked = [...photos].sort((a, b) => propensity(b) - propensity(a));
@@ -215,14 +225,28 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 	const gap = preset.frameGap * SLIDE_W;
 	const borderFor = (hh: number) => Math.round(hh * preset.borderRatio);
 	const bgUnder = (cx: number) => backgrounds.find((b) => cx >= b.x0 && cx < b.x1);
+	const photoOf = (b: Background) => (b.photoId ? input.photoMap.get(b.photoId) : undefined);
+	/** Share of each background's subject a rect would hide, weighted by subject strength. */
 	const coveredSaliency = (rect: { x: number; y: number; w: number; h: number }) => {
 		let s = 0;
 		for (const b of backgrounds) {
-			const p = b.photoId ? input.photoMap.get(b.photoId) : undefined;
+			const p = photoOf(b);
 			if (!p || rect.x >= b.x1 || rect.x + rect.w <= b.x0) continue;
 			const box = { x: b.x0, y: 0, w: b.x1 - b.x0, h: SLIDE_H };
 			const { inside, total } = saliencyIn(p, box, b.crop, rect);
-			s += total ? inside / total : 0;
+			s += total ? (inside / total) * subjectWeight(p) : 0;
+		}
+		return s;
+	};
+	/** Like coveredSaliency, but only counting backgrounds known to have a strong subject. */
+	const subjectRisk = (rect: { x: number; y: number; w: number; h: number }) => {
+		let s = 0;
+		for (const b of backgrounds) {
+			const p = photoOf(b);
+			if (p?.prominence === undefined || rect.x >= b.x1 || rect.x + rect.w <= b.x0) continue;
+			const box = { x: b.x0, y: 0, w: b.x1 - b.x0, h: SLIDE_H };
+			const { inside, total } = saliencyIn(p, box, b.crop, rect);
+			s += total ? (inside / total) * Math.max(0, p.prominence - 0.3) : 0;
 		}
 		return s;
 	};
@@ -233,7 +257,7 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 		for (const b of backgrounds.slice(1)) {
 			if (rect.x >= b.x1 || rect.x + rect.w <= b.x0) continue;
 			const share = hiddenShare({ x: b.x0, y: 0, w: b.x1 - b.x0, h: SLIDE_H }, covers);
-			worst = Math.max(worst, share - HIDDEN_FREE);
+			worst = Math.max(worst, share - hiddenFreeFor(photoOf(b)));
 		}
 		return worst;
 	};
@@ -291,6 +315,7 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 						contrastAt((k + 0.5) * SLIDE_W) * 1 +
 						(k === slideCount - 1 ? -0.6 : 0) + // keep the last slide mostly clear (R4)
 						-buries({ x: (k + 0.5) * SLIDE_W - w / 2, y: (SLIDE_H - h) / 2, w, h }) * 4 +
+						-subjectRisk({ x: (k + 0.5) * SLIDE_W - w / 2, y: (SLIDE_H - h) / 2, w, h }) * 2 +
 						r.range(0, 0.5)
 				}))
 				.sort((a, b) => b.rank - a.rank);

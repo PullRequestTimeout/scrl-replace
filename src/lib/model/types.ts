@@ -29,7 +29,12 @@ export interface Photo {
 	analysis?: PhotoAnalysis;
 	/** On-device subject detection, when turned on; recomputed when SUBJECT_VERSION changes. */
 	subject?: SubjectInfo;
+	/** Your own call on this photo's role, overriding detection. Unset = automatic. */
+	role?: PhotoRole;
 }
+
+/** 'hero' = give it a prominent, uncovered spot; 'background' = fine to cover with frames. */
+export type PhotoRole = 'hero' | 'background';
 
 export interface Project {
 	id: ProjectId;

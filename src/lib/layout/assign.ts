@@ -8,6 +8,7 @@ import { hammingDistance, NEAR_DUPLICATE_BITS } from '#lib/analysis/features.ts'
 import { rowPhotos, type GridRow } from '#lib/model/row.ts';
 import type { PhotoId } from '#lib/model/types.ts';
 import type { LayoutPhoto } from './types.ts';
+import { STRONG_SUBJECT } from './score.ts';
 
 export type Assignment = [PhotoId[], PhotoId[], PhotoId[]];
 
@@ -24,6 +25,8 @@ const dist = (a: number[], b: number[]) =>
 
 const centroid = (vs: number[][]) =>
 	vs[0].map((_, i) => vs.reduce((s, v) => s + v[i], 0) / vs.length);
+
+const isStrong = (p: LayoutPhoto) => (p.prominence ?? 0) >= STRONG_SUBJECT;
 
 export function assignPhotos(row: GridRow, photos: LayoutPhoto[]): Assignment {
 	const used = new Set(rowPhotos(row));
@@ -85,7 +88,9 @@ export function assignPhotos(row: GridRow, photos: LayoutPhoto[]): Assignment {
 				const dup = groups[g].some(
 					(m) => hammingDistance(m.analysis.dhash, p.analysis.dhash) <= NEAR_DUPLICATE_BITS
 				);
-				const v = -dist(f.get(p.id)!, c) - (dup ? 2 : 0);
+				// Share strong subjects out too, so no carousel ends up with all the key shots.
+				const strongHere = isStrong(p) ? groups[g].filter(isStrong).length : 0;
+				const v = -dist(f.get(p.id)!, c) - (dup ? 2 : 0) - 0.5 * strongHere;
 				if (v > bestV) [bestV, bestP, bestG] = [v, p, g];
 			}
 		}

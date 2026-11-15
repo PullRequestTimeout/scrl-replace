@@ -158,7 +158,18 @@ function scoreMatched(o: LayoutPhoto[]): number {
 	].some((d) => d < 6)
 		? 1
 		: 0;
-	return 3 - 1.6 * tone + 0.25 * (shots - 1) - 1.5 * loss - 1.5 * dup;
+	return 3 - 1.6 * tone + 0.25 * (shots - 1) - 1.5 * loss - 1.5 * dup + prominenceBonus(o);
+}
+
+/**
+ * Palette leads the row choice; subject strength (when known) only breaks ties between
+ * similarly matched trios and keeps near-empty background material out of the tiles.
+ */
+function prominenceBonus(o: LayoutPhoto[]): number {
+	const known = o.flatMap((p) => (p.prominence === undefined ? [] : [p.prominence]));
+	if (!known.length) return 0;
+	const mean = known.reduce((a, b) => a + b, 0) / known.length;
+	return 0.4 * (mean - 0.5) - (known.some((v) => v < 0.2) ? 0.6 : 0);
 }
 
 const tileCrop = (p: LayoutPhoto): Crop => ({
