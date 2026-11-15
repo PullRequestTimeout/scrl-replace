@@ -230,10 +230,15 @@
 		'flex h-11 min-w-11 items-center gap-2 rounded-md border px-3 text-sm has-checked:border-primary has-checked:ring-2 has-checked:ring-primary has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring has-disabled:opacity-50 active:bg-accent'}
 	{@const chip = 'size-5 shrink-0 rounded-sm ring-1 ring-foreground/25'}
 	<fieldset class="flex flex-col gap-2" disabled={readOnly} aria-describedby="empty-bg-desc">
-		<legend class="text-sm">Empty background colour</legend>
-		<p id="empty-bg-desc" class="-mt-2 text-xs text-muted-foreground">
-			Shown where a background has no photo, so a frame can sit on a plain slide
-		</p>
+		<!-- Safari lays out a legend specially, so it's for screen readers only; the visible heading
+		     matches the other rows. -->
+		<legend class="sr-only">Empty background colour</legend>
+		<span aria-hidden="true">
+			<span class="text-sm">Empty background colour</span>
+			<span id="empty-bg-desc" class="block text-xs text-muted-foreground">
+				Shown where a background has no photo, so a frame can sit on a plain slide
+			</span>
+		</span>
 		<div class="flex flex-wrap items-center gap-2">
 			{#each EMPTY_SWATCHES as s (s.value)}
 				{@const checked = p.emptyBackground === s.value}
@@ -250,8 +255,10 @@
 					{#if checked}<CheckIcon class="size-4" aria-hidden="true" />{/if}
 				</label>
 			{/each}
-			<label class={option}>
-				<!-- Choosing "Custom" opens the colour sheet; the colour saves when it closes. -->
+			<label class="relative {option}">
+				<!-- The colour input covers the whole option (invisibly) so a tap anywhere opens the
+				     colour sheet; the radio carries the state for keyboards and screen readers. The
+				     colour saves when the sheet closes. -->
 				<input
 					type="radio"
 					name="empty-bg"
@@ -262,9 +269,9 @@
 				<input
 					bind:this={customInput}
 					type="color"
-					aria-label="Custom colour"
+					aria-hidden="true"
 					tabindex="-1"
-					class="size-6 cursor-pointer rounded-sm border-0 bg-transparent p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-foreground/25 [&::-webkit-color-swatch-wrapper]:p-0"
+					class="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-default"
 					value={p.emptyBackground}
 					oninput={(e) => (p.emptyBackground = e.currentTarget.value.toLowerCase())}
 					onchange={(e) => {
@@ -272,6 +279,7 @@
 						void save();
 					}}
 				/>
+				<span class={chip} style:background-color={p.emptyBackground}></span>
 				Custom
 				{#if isCustomEmpty(p)}<CheckIcon class="size-4" aria-hidden="true" />{/if}
 			</label>
