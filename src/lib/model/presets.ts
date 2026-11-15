@@ -68,7 +68,7 @@ export const DEFAULT_PRESET: StylePreset = {
 		joinNearEdge: 3,
 		framePlacement: 2,
 		frameCoversSubject: 3,
-		contrast: 1,
+		contrast: 2.5,
 		frameHeight: 1.5,
 		bgSpan: 1,
 		lastSlideCovered: 0.5,

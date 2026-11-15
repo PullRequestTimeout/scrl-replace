@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { analyzePixels } from '#lib/analysis/features.ts';
 import { fitWithin } from '#lib/images/geometry.ts';
 import { WORKING_LONG_EDGE } from '#lib/model/constants.ts';
-import { rowPhotos } from '#lib/model/row.ts';
+import { rowPhotos, rowTiles } from '#lib/model/row.ts';
+import { frameOuter } from '#lib/model/layout.ts';
+import { DEFAULT_PRESET } from '#lib/model/presets.ts';
+import { suggestCarousels } from './carousel.ts';
 import { fixturePixels, fixtureSet } from '#lib/testing/fixtures.ts';
 import { assignPhotos } from './assign.ts';
 import { canSplit, suggestRows } from './row.ts';
@@ -77,5 +80,56 @@ describe.skipIf(EXAMPLE.length === 0)('row suggestions on the example gallery', 
 			const sizes = groups.map((g) => g.length);
 			expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
 		}
+	});
+
+	it('shares colour and B&W evenly across the carousels', () => {
+		for (const { row } of suggestRows(photos, { count: 4 })) {
+			const byId = new Map(photos.map((p) => [p.id, p]));
+			const mono = assignPhotos(row, photos).map(
+				(g) => g.filter((id) => byId.get(id)!.analysis.isMono).length
+			);
+			expect(Math.max(...mono) - Math.min(...mono)).toBeLessThanOrEqual(1);
+		}
+	});
+
+	it('mostly sets B&W frames on colour backgrounds and colour frames on B&W, landscapes behind', () => {
+		const byId = new Map(photos.map((p) => [p.id, p]));
+		let frames = 0;
+		let contrasting = 0;
+		let landscapes = 0;
+		let landscapesFramed = 0;
+		for (const { row } of suggestRows(photos, { count: 4 })) {
+			const groups = assignPhotos(row, photos);
+			rowTiles(row, (id) => byId.get(id)!).forEach((tile, i) => {
+				const [best] = suggestCarousels(
+					{
+						tile,
+						photos: groups[i].map((id) => byId.get(id)!),
+						photoMap: byId,
+						preset: DEFAULT_PRESET
+					},
+					{ count: 1, tries: 250, seed: 7 + i }
+				);
+				const c = best.carousel;
+				const framed = new Set(c.frames.map((f) => f.photoId));
+				for (const id of groups[i]) {
+					const p = byId.get(id)!;
+					if (p.width / p.height < 1.15) continue;
+					landscapes++;
+					if (framed.has(id)) landscapesFramed++;
+				}
+				for (const f of c.frames) {
+					const o = frameOuter(f);
+					const cx = o.x + o.w / 2;
+					const under = c.backgrounds.find((b) => cx >= b.x0 && cx < b.x1);
+					if (!under?.photoId) continue;
+					frames++;
+					if (byId.get(f.photoId)!.analysis.isMono !== byId.get(under.photoId)!.analysis.isMono)
+						contrasting++;
+				}
+			});
+		}
+		expect(contrasting / frames).toBeGreaterThanOrEqual(0.6);
+		expect(landscapesFramed / landscapes).toBeLessThanOrEqual(0.1);
 	});
 });

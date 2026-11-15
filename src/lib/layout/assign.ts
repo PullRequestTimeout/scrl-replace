@@ -1,7 +1,8 @@
 /**
  * Split the shoot's remaining photos across the three carousels (PLAN.md §6.3): each photo
  * joins the carousel it best matches in tone (and, when every photo has one, capture time),
- * with sizes kept within one of each other and near-duplicates kept apart.
+ * with sizes kept within one of each other and near-duplicates kept apart. Colour and B&W are
+ * shared out evenly, so every carousel can set B&W frames on colour backgrounds and vice versa.
  */
 import { hammingDistance, NEAR_DUPLICATE_BITS } from '#lib/analysis/features.ts';
 import { rowPhotos, type GridRow } from '#lib/model/row.ts';
@@ -13,15 +14,7 @@ export type Assignment = [PhotoId[], PhotoId[], PhotoId[]];
 function features(p: LayoutPhoto, timeScale: ((t: number) => number) | null): number[] {
 	const a = p.analysis;
 	const d = a.dominant[0]?.lab ?? { l: 50, a: 0, b: 0 };
-	const f = [
-		a.lumaMean * 2,
-		a.chroma / 30,
-		a.warmth / 20,
-		a.isMono ? 1.5 : 0,
-		d.l / 50,
-		d.a / 40,
-		d.b / 40
-	];
+	const f = [a.lumaMean * 2, a.chroma / 30, a.warmth / 20, d.l / 50, d.a / 40, d.b / 40];
 	if (timeScale && p.capturedAt !== undefined) f.push(timeScale(p.capturedAt) * 1.5);
 	return f;
 }
@@ -70,6 +63,15 @@ export function assignPhotos(row: GridRow, photos: LayoutPhoto[]): Assignment {
 	const capacity = [0, 1, 2].map(
 		(i) => Math.floor(rest.length / 3) + (i < rest.length % 3 ? 1 : 0)
 	);
+	// Even colour/B&W mix: each carousel gets its share of B&W photos. Extra ones go to the
+	// carousels that are already one larger, so the quotas always fit the capacities.
+	const monoTotal = rest.filter((p) => p.analysis.isMono).length;
+	const monoCap = [0, 1, 2].map((i) => Math.floor(monoTotal / 3) + (i < monoTotal % 3 ? 1 : 0));
+	const colourCap = capacity.map((c, i) => c - monoCap[i]);
+	const fits = (g: number, p: LayoutPhoto) => {
+		const mono = groups[g].filter((m) => m.analysis.isMono).length;
+		return p.analysis.isMono ? mono < monoCap[g] : groups[g].length - mono < colourCap[g];
+	};
 	const remaining = new Set(rest);
 	while (remaining.size) {
 		let bestP: LayoutPhoto | null = null;
@@ -77,7 +79,7 @@ export function assignPhotos(row: GridRow, photos: LayoutPhoto[]): Assignment {
 		let bestV = -Infinity;
 		for (const p of remaining) {
 			for (let g = 0; g < 3; g++) {
-				if (groups[g].length >= capacity[g]) continue;
+				if (groups[g].length >= capacity[g] || !fits(g, p)) continue;
 				const members = groups[g].map((m) => f.get(m.id)!);
 				const c = centroid([seeds[g], ...members]);
 				const dup = groups[g].some(

@@ -156,6 +156,7 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 	// 1. Roles: about a third become frames; at least one background follows the tile.
 	const n = photos.length;
 	const frameCount = Math.max(0, Math.min(n - 1, Math.round(n / 3) + r.pick([-1, 0, 0, 1])));
+	// Portraits lean towards frames and landscapes towards backgrounds, where they work best.
 	const propensity = (p: LayoutPhoto) => {
 		const a = aspectOf(p);
 		let s = a < 0.87 ? 0.4 : a < 1.15 ? 0.2 : -0.3;
@@ -275,7 +276,7 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 					k,
 					rank:
 						(slideHasJoin(k) ? 1 : 0) +
-						contrastAt((k + 0.5) * SLIDE_W) * 0.5 +
+						contrastAt((k + 0.5) * SLIDE_W) * 1 +
 						(k === slideCount - 1 ? -0.6 : 0) + // keep the last slide mostly clear (R4)
 						r.range(0, 0.5)
 				}))
@@ -313,7 +314,7 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 					for (const yFrac of [0.08, 0.5, 0.92]) {
 						const fy = preset.frameMargin + (SLIDE_H - 2 * preset.frameMargin - h) * yFrac;
 						const cost =
-							coveredSaliency({ x: fx, y: fy, w, h }) - contrastAt(edge) * 0.3 + r.range(0, 0.1);
+							coveredSaliency({ x: fx, y: fy, w, h }) - contrastAt(edge) * 0.6 + r.range(0, 0.1);
 						if (cost < bestCost) {
 							bestCost = cost;
 							placed = {
