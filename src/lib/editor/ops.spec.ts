@@ -92,8 +92,18 @@ describe('editing ops', () => {
 	it('adds and removes slides', () => {
 		const added = addSlide(sample());
 		expect(stripWidth(added)).toBe(5400);
-		expect(added.backgrounds.at(-1)!.x1).toBe(5400);
+		// The last photo stays put; the new slide is an empty slot.
+		expect(added.backgrounds.map((b) => [b.photoId, b.x0, b.x1])).toEqual([
+			['a', 0, 1080],
+			['b', 1080, 3000],
+			['c', 3000, 4320],
+			[null, 4320, 5400]
+		]);
 		valid(added);
+		// Adding again grows the empty slot rather than stacking slots.
+		const twice = addSlide(added);
+		expect(twice.backgrounds.at(-1)).toMatchObject({ photoId: null, x0: 4320, x1: 6480 });
+		expect(twice.backgrounds).toHaveLength(4);
 
 		const removed = removeSlide(sample());
 		expect(removed.slideCount).toBe(3);
@@ -197,6 +207,35 @@ describe('snapping', () => {
 		expect(s.guides).toContainEqual({ axis: 'x', at: 2160 });
 		const j = snapFrame(c, f, 3000 - w / 2 - 15, 300, 20);
 		expect(j.x + w / 2).toBe(3000);
+	});
+
+	it("snaps a frame centre to a slide's vertical centre line", () => {
+		const c = sample();
+		const f = c.frames[0];
+		const w = frameWidth(f);
+		const s = snapFrame(c, f, 1080 + 540 - w / 2 - 12, 300, 20);
+		expect(s.x + w / 2).toBe(1620);
+		expect(s.guides).toContainEqual({ axis: 'x', at: 1620 });
+	});
+
+	it('snaps frame edges flush with slide edges', () => {
+		const c = sample();
+		const f = c.frames[0];
+		const w = frameWidth(f);
+		// Left edge onto the slide 3 edge.
+		const left = snapFrame(c, f, 2160 + 9, 300, 20);
+		expect(left.x).toBe(2160);
+		expect(left.guides).toContainEqual({ axis: 'x', at: 2160 });
+		// Right edge onto the slide 3 edge.
+		const right = snapFrame(c, f, 2160 - w - 7, 300, 20);
+		expect(right.x + w).toBeCloseTo(2160);
+	});
+
+	it('picks the nearest candidate when several are in range', () => {
+		const c = sample();
+		const f = c.frames[0];
+		// 4px from flush-left at 1080, far from everything else.
+		expect(snapFrame(c, f, 1084, 300, 20).x).toBe(1080);
 	});
 
 	it('snaps vertically to the centre and margins', () => {

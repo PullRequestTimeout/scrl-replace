@@ -295,10 +295,18 @@ export function swapPhotos(
 // ---------------------------------------------------------------------------
 // Slides
 
+/**
+ * Add a slide at the end as a new empty background slot; existing backgrounds stay where
+ * they are. If the strip already ends in an empty slot, that slot just grows.
+ */
 export function addSlide(c: Carousel): Carousel {
 	const next = clone(c);
+	const oldW = stripWidth(next);
 	next.slideCount += 1;
-	next.backgrounds[next.backgrounds.length - 1].x1 = stripWidth(next);
+	const last = next.backgrounds[next.backgrounds.length - 1];
+	if (last.photoId === null) last.x1 = stripWidth(next);
+	else
+		next.backgrounds.push({ photoId: null, x0: oldW, x1: stripWidth(next), crop: { ...CENTRED } });
 	return next;
 }
 
@@ -324,9 +332,10 @@ export interface SnapResult {
 }
 
 /**
- * Snap a frame being dragged. Its centre snaps to slide edges and background joins
- * (where frames sit in the reference posts); vertically to the slide centre and the
- * top/bottom margins. `threshold` is in strip px.
+ * Snap a frame being dragged. Horizontally: its centre to slide edges, background joins
+ * (where frames sit in the reference posts) and slide centre lines, or its left/right edge
+ * flush with a slide edge. Vertically: to the slide centre and the top/bottom margins.
+ * `threshold` is in strip px.
  */
 export function snapFrame(
 	c: Carousel,
@@ -338,22 +347,28 @@ export function snapFrame(
 	const w = frameWidth(f);
 	const guides: SnapResult['guides'] = [];
 
-	const xTargets = [
-		...Array.from({ length: c.slideCount - 1 }, (_, i) => (i + 1) * SLIDE_W),
-		...c.backgrounds.slice(1).map((b) => b.x0)
-	];
-	const cx = x + w / 2;
-	let bestX: number | null = null;
-	for (const t of xTargets) {
-		if (
-			Math.abs(cx - t) <= threshold &&
-			(bestX === null || Math.abs(cx - t) < Math.abs(cx - bestX))
-		)
-			bestX = t;
+	// Horizontal candidates, each giving the frame x it would snap to:
+	// - centre on a slide edge or background join (straddling, as in the reference posts)
+	// - centre on a slide's vertical centre line
+	// - left or right edge flush with a slide edge
+	const xCandidates: { at: number; x: number }[] = [];
+	for (let k = 0; k <= c.slideCount; k++) {
+		const edge = k * SLIDE_W;
+		if (k > 0 && k < c.slideCount) xCandidates.push({ at: edge, x: edge - w / 2 });
+		xCandidates.push({ at: edge, x: edge }, { at: edge, x: edge - w });
+		if (k < c.slideCount)
+			xCandidates.push({ at: edge + SLIDE_W / 2, x: edge + SLIDE_W / 2 - w / 2 });
 	}
-	if (bestX !== null) {
-		x = bestX - w / 2;
-		guides.push({ axis: 'x', at: bestX });
+	for (const b of c.backgrounds.slice(1)) xCandidates.push({ at: b.x0, x: b.x0 - w / 2 });
+
+	let bestX: (typeof xCandidates)[number] | null = null;
+	for (const cand of xCandidates) {
+		const d = Math.abs(x - cand.x);
+		if (d <= threshold && (!bestX || d < Math.abs(x - bestX.x))) bestX = cand;
+	}
+	if (bestX) {
+		x = bestX.x;
+		guides.push({ axis: 'x', at: bestX.at });
 	}
 
 	const yCandidates: { at: number; y: number }[] = [
