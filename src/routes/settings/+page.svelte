@@ -60,7 +60,10 @@
 		{:else if info === null}
 			<p class="text-sm text-muted-foreground">This browser doesn’t report storage use.</p>
 		{:else}
-			<Progress value={info.quota ? (info.usage / info.quota) * 100 : 0} />
+			<Progress
+				value={info.quota ? Math.round((info.usage / info.quota) * 100) : 0}
+				aria-label="Storage used"
+			/>
 			<p class="text-sm text-muted-foreground">
 				{formatBytes(info.usage)} used of about {formatBytes(info.quota)} available.
 			</p>
