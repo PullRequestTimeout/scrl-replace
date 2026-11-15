@@ -5,6 +5,7 @@
 	import { Toaster } from '#lib/components/ui/sonner/index.js';
 	import ReloadPrompt from '#lib/components/app/ReloadPrompt.svelte';
 	import ImportRecovery from '#lib/components/app/ImportRecovery.svelte';
+	import SubjectDetectionWatch from '#lib/components/app/SubjectDetectionWatch.svelte';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { Button } from '#lib/components/ui/button/index.js';
 
@@ -60,3 +61,4 @@
 />
 <ReloadPrompt />
 <ImportRecovery />
+<SubjectDetectionWatch />

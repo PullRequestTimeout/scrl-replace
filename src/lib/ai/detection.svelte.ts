@@ -15,6 +15,7 @@ import {
 	type SubjectInfo
 } from './model.ts';
 import { SUBJECT_PREF_KEY } from './prefs.ts';
+import { isSlowRun, median, recordRun, SNOOZE_MS, STALL_MS } from './watchdog.ts';
 import type { AiWorkerApi } from './ai.worker.ts';
 import AiWorker from './ai.worker.ts?worker';
 
@@ -23,6 +24,19 @@ export type DetectionStatus =
 
 const PREF_KEY = SUBJECT_PREF_KEY;
 const BENCH_KEY = 'pref:subject-detection-bench';
+/** Recent runs, slow or not (JSON boolean[]), for the slowdown prompt. */
+const RUNS_KEY = 'pref:subject-detection-runs';
+/** Until when "Keep it on" holds back the slowness prompt (ms since epoch). */
+const SNOOZE_KEY = 'pref:subject-detection-snooze';
+/** Set while detection runs; still there at launch means the app was killed mid-run. */
+const ACTIVE_KEY = 'subject-detection:active';
+
+/** Why the app suggests turning detection off. */
+export interface DetectionWarning {
+	kind: 'slow' | 'crash';
+	/** Seconds per photo, for 'slow'. */
+	seconds?: number;
+}
 
 /** Above this model time per photo on the speed test, the feature stays off. */
 export const SLOW_MS = 1000;
@@ -92,12 +106,16 @@ class SubjectDetection {
 	benchmarkMs = $state<number | null>(null);
 	/** True when the model is stored on the device, even if detection is off. */
 	downloaded = $state(false);
+	/** Set when detection looks too slow or keeps failing on this device; shown as a prompt. */
+	warning = $state<DetectionWarning | null>(null);
 
 	#worker: Worker | undefined;
 	#api: Comlink.Remote<AiWorkerApi> | undefined;
 	#loaded = false;
 	#inFlight = new Set<PhotoId>();
 	#initPromise: Promise<void> | undefined;
+	/** A detection run is under way (so a worker crash is worth reporting). */
+	#running = false;
 
 	get enabled() {
 		return this.status === 'on';
@@ -107,7 +125,11 @@ class SubjectDetection {
 		if (!this.#api) {
 			this.#worker = new AiWorker();
 			// If iOS kills the worker (usually memory), start fresh next time.
-			this.#worker.addEventListener('error', () => this.#dropWorker());
+			this.#worker.addEventListener('error', () => {
+				const running = this.#running;
+				this.#dropWorker();
+				if (running) this.#warnCrash();
+			});
 			this.#api = Comlink.wrap<AiWorkerApi>(this.#worker);
 		}
 		return this.#api;
@@ -138,6 +160,11 @@ class SubjectDetection {
 				this.downloaded = false;
 			}
 			this.status = readPref(PREF_KEY) === 'on' ? 'on' : 'off';
+			// The app was closed or killed while detecting, most likely out of memory.
+			if (readPref(ACTIVE_KEY) !== null) {
+				writePref(ACTIVE_KEY, null);
+				if (this.status === 'on') this.#warnCrash();
+			}
 		})();
 		return this.#initPromise;
 	}
@@ -182,8 +209,38 @@ class SubjectDetection {
 		}
 	}
 
+	#warnCrash() {
+		if (this.enabled) this.warning = { kind: 'crash' };
+	}
+
+	/** Note how a run went, and ask about turning it off if runs keep being slow. */
+	#recordTiming(perPhotoMs: number, loadMs: number) {
+		let history: boolean[] = [];
+		try {
+			history = JSON.parse(readPref(RUNS_KEY) ?? '[]');
+		} catch {
+			history = [];
+		}
+		const slow = isSlowRun({ perPhotoMs, loadMs }, this.benchmarkMs);
+		const next = recordRun(history, slow);
+		writePref(RUNS_KEY, JSON.stringify(next.history));
+		const snoozedUntil = Number(readPref(SNOOZE_KEY)) || 0;
+		if (next.warn && slow && Date.now() > snoozedUntil) {
+			this.warning = { kind: 'slow', seconds: Math.round(perPhotoMs / 100) / 10 };
+		}
+	}
+
+	/** "Keep it on": forget the slow runs and don't ask about slowness for a while. */
+	keepOn() {
+		writePref(RUNS_KEY, null);
+		writePref(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
+		this.warning = null;
+	}
+
 	/** Turn off. Stored results and the downloaded model are kept. */
 	disable() {
+		this.warning = null;
+		writePref(RUNS_KEY, null);
 		writePref(PREF_KEY, null);
 		this.#dropWorker();
 		if (this.status !== 'unsupported') this.status = 'off';
@@ -211,21 +268,45 @@ class SubjectDetection {
 		if (!todo.length) return {};
 		const ids = todo.map((p) => p.id);
 		ids.forEach((id) => this.#inFlight.add(id));
+		this.#running = true;
+		writePref(ACTIVE_KEY, String(Date.now()));
+		let stallTimer: ReturnType<typeof setTimeout> | undefined;
+		const stalled = new Promise<'stalled'>((resolve) => {
+			stallTimer = setTimeout(() => resolve('stalled'), STALL_MS);
+		});
 		try {
 			const api = this.#remote();
-			if (!this.#loaded) {
-				const info = await api.load();
-				this.#loaded = true;
-				this.backend = info.backend;
+			const run = async () => {
+				let loadMs = 0;
+				if (!this.#loaded) {
+					const t0 = performance.now();
+					const info = await api.load();
+					loadMs = performance.now() - t0;
+					this.#loaded = true;
+					this.backend = info.backend;
+				}
+				const { results, ms } = await api.detect(ids);
+				return { results, ms, loadMs };
+			};
+			const outcome = await Promise.race([run(), stalled]);
+			if (outcome === 'stalled') {
+				// Stuck (or the worker died without a word): start afresh next time.
+				this.#dropWorker();
+				this.#warnCrash();
+				return null;
 			}
-			const { results } = await api.detect(ids);
-			await saveSubjects(results);
-			return results;
+			await saveSubjects(outcome.results);
+			this.#recordTiming(median(outcome.ms), outcome.loadMs);
+			return outcome.results;
 		} catch (err) {
 			console.warn('Subject detection failed', err);
 			this.#dropWorker();
+			this.#warnCrash();
 			return null;
 		} finally {
+			clearTimeout(stallTimer);
+			this.#running = false;
+			writePref(ACTIVE_KEY, null);
 			ids.forEach((id) => this.#inFlight.delete(id));
 		}
 	}
