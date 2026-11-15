@@ -41,10 +41,11 @@ These rules come from measuring your three exported carousels. They drive both t
 | R10 | A frame sits fully inside the slide top to bottom, at least 40 px from the top and bottom edges.                                                                                                                                                 | Hard                           |
 | R11 | A frame is 40–90% of the slide height (your smaller landscape frames are ~42%).                                                                                                                                                                  | Soft                           |
 | R12 | A frame doesn't cover the subject of the background behind it, and sits over quieter areas instead.                                                                                                                                              | Soft (strong)                  |
-| R13 | A frame contrasts with its background: colour over black-and-white or the reverse, or else a clear difference in brightness or colour.                                                                                                           | Soft                           |
+| R13 | A frame contrasts with its background: colour over black-and-white or the reverse, or else a clear difference in brightness or colour. You prefer an even colour/B&W mix in every carousel so this is nearly always possible.                    | Soft (strong)                  |
 | R14 | Frames don't overlap each other. There's at least 0.3 of a slide between them.                                                                                                                                                                   | Hard                           |
 | R15 | There are about `round(photos / 3)` frames per carousel, and about `photos − 1` slides.                                                                                                                                                          | Soft (sets the starting count) |
 | R16 | Two near-duplicate photos never sit next to each other.                                                                                                                                                                                          | Soft                           |
+| R17 | Frames never bury a background: at most about 55% of any background is hidden (one of your posts hides ~53%). Narrow portrait backgrounds are most at risk.                                                                                      | Soft (strong)                  |
 
 Your examples matched these numbers: 4 slides with 5 photos (3 backgrounds and 2 frames), 6 slides with 6 photos, and 5 slides with 6 photos.
 
@@ -248,7 +249,7 @@ Projects ─▶ Import ─▶ Grid row ─▶ Carousel 1 ─▶ Carousel 2 ─�
    - Tap a tile to **pin** it or swap its photo. Pinned tiles stay put when you regenerate, and the other tiles are re-suggested to match.
    - A split / matched / either filter.
    - Drag to move a split row's crop.
-4. **Carousel n, options:** 3–5 layout options shown as small strips to swipe through. "Regenerate" makes a new batch, keeping the photos assigned to this carousel. A tray shows which photos this carousel uses, and you can move photos between carousels.
+4. **Carousel n, options:** 3–5 layout options shown as small strips to swipe through. "Regenerate" makes a new batch, keeping the photos assigned to this carousel. Moving photos between carousels happens on the Move photos screen (6.3).
 5. **Carousel n, editor:** see section 7.
 6. **Export:** one card per carousel, **in posting order**: "Post 1: right tile", "Post 2: middle", "Post 3: left".
    - Each card has a **Save to Photos** button, and you can mark it as posted.
@@ -302,11 +303,11 @@ Everything runs in the worker. It's predictable: each suggestion has a seed, so 
 
 ### 6.3 Splitting photos across the three carousels
 
-1. Each carousel starts from its row tile. For a split row, all three carousels share the panorama's theme, so photos are spread by grouping similar-looking photos instead (tone, B&W or colour, shot type).
-2. Every remaining photo goes to the carousel it suits best, judged by how similar its tone is to that carousel's photos. Carousel sizes are kept within ±1 of each other.
+1. Each carousel starts from its row tile. For a split row, all three carousels share the panorama's theme, so photos are spread by grouping similar-looking photos instead (tone and shot type).
+2. Every remaining photo goes to the carousel it suits best, judged by how similar its tone is to that carousel's photos. Carousel sizes are kept within ±1 of each other, and so are their counts of B&W photos. That way every carousel can set B&W frames on colour backgrounds and colour frames on B&W (R13).
    - **Capture time is an optional bonus.** If every photo has a date, being close in time adds a small amount to the match. If some or all photos have no date, the time term is switched off for the whole set and nothing else changes.
 3. Near-duplicates end up in different carousels, or at least not next to each other.
-4. You can override this from each carousel's photo tray. Moving a photo between carousels invalidates just those two carousels' suggestions.
+4. You can override this on the **Move photos** screen (linked from the project screen): send any photo to another carousel or leave it out. Only the carousels whose photos changed get new layouts; the others keep their edits. The screen reads what each carousel holds now, so hand edits in the editor count. It works for hand-built projects too, once every carousel has a grid tile photo.
 
 ### 6.4 Carousel layout
 
@@ -314,7 +315,8 @@ For each carousel, the worker generates about 500 candidate layouts (well under 
 
 1. **Choose roles:** each photo becomes a _background_ or a _frame_.
    - Landscape photos lean toward backgrounds.
-   - Photos that contrast with their likely neighbour lean toward frames.
+   - Portrait photos lean toward frames.
+   - (Tried and dropped: making the rarer of colour/B&W lean toward frames. It pushed landscapes into frames and didn't improve contrast; the even split and the contrast score do that job.)
    - The frame count follows R15, give or take one.
 2. **Order the photos for flow:**
    - Mix shot types and alternate colour and black-and-white where possible (rule R16 applies).
@@ -326,6 +328,7 @@ For each carousel, the worker generates about 500 candidate layouts (well under 
    - Each frame goes on a slide edge near a background join (R8, R9).
    - Height is drawn from the R11 range, and vertical position comes from where the background behind is quietest (R10, R12).
    - Each frame's horizontal position is then searched for the spot where it covers the least of the background's subject.
+   - Slides with the opposite colour/B&W behind are preferred (R13), and spots that would hide too much of a background are avoided (R17).
 6. **Check and score:** layouts that break a hard rule are discarded. Each remaining layout gets the weighted total of its soft-rule scores, and 3–5 good but varied layouts are picked as in 6.2.
 
 The checking function is also used live in the editor to show warnings, without blocking you. For example: "frame covers the subject", or "join on a slide edge".
