@@ -89,7 +89,15 @@
 			</section>
 
 			<section class="flex flex-col gap-3">
-				<h2 class="px-4 text-sm font-medium">Carousels</h2>
+				<div class="flex items-center gap-2 px-4">
+					<h2 class="text-sm font-medium">Carousels</h2>
+					{#if project.assignment}
+						<a
+							href="/p/{project.id}/move"
+							class="text-xs text-muted-foreground underline underline-offset-4">Move photos</a
+						>
+					{/if}
+				</div>
 				{#each carousels as carousel, i (i)}
 					<a
 						href="/p/{project.id}/c/{i + 1}"
