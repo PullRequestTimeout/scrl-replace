@@ -10,11 +10,17 @@
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import StoredImage from '#lib/components/app/StoredImage.svelte';
+	import PhotoRoleChooser from '#lib/components/app/PhotoRoleChooser.svelte';
 	import { Importer } from '#lib/import/importer.svelte.ts';
 	import { canBeSplitRow, orientationOf } from '#lib/images/geometry.ts';
 	import { revokeImageUrls } from '#lib/images/object-urls.ts';
-	import type { Photo, Project } from '#lib/model/types.ts';
-	import { getPhotos, getProject, removePhotoFromProject } from '#lib/storage/projects.ts';
+	import type { Photo, PhotoRole, Project } from '#lib/model/types.ts';
+	import {
+		getPhotos,
+		getProject,
+		removePhotoFromProject,
+		savePhotoRole
+	} from '#lib/storage/projects.ts';
 
 	const projectId = $derived(page.params.id ?? '');
 
@@ -67,6 +73,26 @@
 		await removePhotoFromProject(projectId, photo.id);
 		revokeImageUrls(photo.id);
 		photos = photos.filter((p) => p.id !== photo.id);
+	}
+
+	/** Short badge text, and the words VoiceOver hears (matching the "Use as" choice). */
+	const ROLE_BADGE: Record<PhotoRole, string> = { hero: 'Subject', background: 'Background' };
+	const ROLE_SPOKEN: Record<PhotoRole, string> = {
+		hero: 'marked as strong subject',
+		background: 'marked as background'
+	};
+
+	async function setRole(photo: Photo, role: PhotoRole | undefined) {
+		try {
+			await savePhotoRole(photo.id, role);
+		} catch {
+			toast.error('Couldn’t save that. Try again.');
+			return;
+		}
+		const next = { ...photo, role };
+		if (!role) delete next.role;
+		photos = photos.map((p) => (p.id === photo.id ? next : p));
+		selected = next;
 	}
 
 	function savedSoFar(n: number) {
@@ -132,10 +158,21 @@
 							type="button"
 							class="block h-full w-full overflow-hidden focus-visible:outline-2 focus-visible:outline-ring"
 							onclick={() => (selected = photo)}
-							aria-label="{photo.name}, {orientationOf(photo)}"
+							aria-label="{photo.name}, {orientationOf(photo)}{photo.role
+								? `, ${ROLE_SPOKEN[photo.role]}`
+								: ''}"
 						>
 							<StoredImage photoId={photo.id} class="h-full w-full object-cover" />
 						</button>
+						{#if photo.role}
+							<Badge
+								variant="secondary"
+								class="pointer-events-none absolute top-1 left-1 text-[10px]"
+								aria-hidden="true"
+							>
+								{ROLE_BADGE[photo.role]}
+							</Badge>
+						{/if}
 						{#if orientationOf(photo) === 'landscape' && !canBeSplitRow(photo)}
 							<Badge
 								variant="secondary"
@@ -206,19 +243,25 @@
 					{photo.capturedAt ? dateTime.format(photo.capturedAt) : 'No capture date'}
 				</Drawer.Description>
 			</Drawer.Header>
-			<div class="flex justify-center px-4">
-				<StoredImage
-					photoId={photo.id}
-					variant="preview"
-					class="max-h-[55dvh] w-auto max-w-full rounded object-contain"
-				/>
+			<!-- Scrolls on short screens, so the buttons below always stay reachable. -->
+			<div class="min-h-0 overflow-y-auto overscroll-contain" data-vaul-no-drag>
+				<div class="flex justify-center px-4">
+					<StoredImage
+						photoId={photo.id}
+						variant="preview"
+						class="max-h-[42dvh] w-auto max-w-full rounded object-contain"
+					/>
+				</div>
+				<div class="px-4 pt-3">
+					<PhotoRoleChooser {photo} onChange={(role) => setRole(photo, role)} />
+				</div>
+				{#if orientationOf(photo) === 'landscape' && !canBeSplitRow(photo)}
+					<p class="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground">
+						<TriangleAlertIcon class="size-4" aria-hidden="true" />
+						Too small to be cut across all three grid tiles.
+					</p>
+				{/if}
 			</div>
-			{#if orientationOf(photo) === 'landscape' && !canBeSplitRow(photo)}
-				<p class="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground">
-					<TriangleAlertIcon class="size-4" aria-hidden="true" />
-					Too small to be cut across all three grid tiles.
-				</p>
-			{/if}
 			<Drawer.Footer>
 				<Button variant="destructive" onclick={() => remove(photo)}>Remove from project</Button>
 				<Drawer.Close class="w-full">

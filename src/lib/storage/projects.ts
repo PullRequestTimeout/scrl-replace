@@ -1,4 +1,4 @@
-import type { Photo, PhotoId, Project, ProjectId } from '#lib/model/types.ts';
+import type { Photo, PhotoId, PhotoRole, Project, ProjectId } from '#lib/model/types.ts';
 import type { ImageVariant } from '#lib/model/constants.ts';
 import { blobKey, db, newId } from './db.ts';
 import { getDefaultPresetId } from '#lib/settings.ts';
@@ -95,6 +95,18 @@ export async function getPhotos(ids: PhotoId[]): Promise<Photo[]> {
 	const database = await db();
 	const photos = await Promise.all(ids.map((id) => database.get('photos', id)));
 	return photos.filter((p): p is Photo => !!p);
+}
+
+/** Set (or clear, with undefined) your own role for a photo. */
+export async function savePhotoRole(id: PhotoId, role: PhotoRole | undefined): Promise<void> {
+	const tx = (await db()).transaction('photos', 'readwrite');
+	const photo = await tx.store.get(id);
+	if (photo) {
+		const next = { ...photo, role };
+		if (!role) delete next.role;
+		await tx.store.put(next);
+	}
+	await tx.done;
 }
 
 /** Store analysis results for existing photos. */
