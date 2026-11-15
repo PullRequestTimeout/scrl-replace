@@ -23,6 +23,7 @@
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
 	import { listPresets } from '#lib/storage/presets.ts';
 	import { DEFAULT_PRESET_ID, type StylePreset } from '#lib/model/presets.ts';
+	import { haptic } from '#lib/haptics.ts';
 
 	const data = new ProjectData(page.params.id ?? '');
 	let sources = $state(new Map<string, DrawSource>());
@@ -131,6 +132,7 @@
 								? 'bg-secondary text-foreground'
 								: 'text-muted-foreground'}"
 							aria-pressed={rowMode === 'grid'}
+							{@attach haptic}
 							onclick={() => (rowMode = 'grid')}>Profile grid</button
 						>
 						<button
@@ -139,6 +141,7 @@
 								? 'bg-secondary text-foreground'
 								: 'text-muted-foreground'}"
 							aria-pressed={rowMode === 'full'}
+							{@attach haptic}
 							onclick={() => (rowMode = 'full')}>Full slides</button
 						>
 					</div>

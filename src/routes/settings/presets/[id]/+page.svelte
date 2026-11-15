@@ -20,6 +20,7 @@
 		type StylePreset
 	} from '#lib/model/presets.ts';
 	import { duplicatePreset, getPreset, isBuiltIn, savePreset } from '#lib/storage/presets.ts';
+	import { haptic } from '#lib/haptics.ts';
 
 	type RangeKey = keyof typeof RANGE_LIMITS;
 	type NumberKey = keyof typeof NUMBER_LIMITS;
@@ -246,7 +247,8 @@
 		<div class="flex flex-wrap items-center gap-2">
 			{#each EMPTY_SWATCHES as s (s.value)}
 				{@const checked = !custom && p.emptyBackground === s.value}
-				<label class={option}>
+				<!-- No haptic on Custom: its colour sheet only opens from a direct tap. -->
+				<label class={option} {@attach haptic}>
 					<input
 						type="radio"
 						name="empty-bg"

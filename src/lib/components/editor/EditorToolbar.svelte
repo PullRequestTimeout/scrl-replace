@@ -33,6 +33,7 @@
 	} from '#lib/editor/ops.ts';
 	import { MAX_ZOOM, zoomCrop } from '#lib/editor/crop-gesture.ts';
 	import { backgroundRect, frameInner } from '#lib/model/layout.ts';
+	import { haptic } from '#lib/haptics.ts';
 
 	interface Props {
 		editor: Editor;
@@ -187,6 +188,7 @@
 					size="sm"
 					variant={isShape(shape.value) ? 'secondary' : 'ghost'}
 					aria-pressed={!!isShape(shape.value)}
+					{@attach haptic}
 					onclick={() =>
 						editor.apply(
 							setFrameAspect(

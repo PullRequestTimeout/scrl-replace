@@ -28,6 +28,7 @@
 	import { addFrame, replacePhoto, swapPhotos, type ElementRef } from '#lib/editor/ops.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
+	import { haptic } from '#lib/haptics.ts';
 
 	const index = Math.max(0, Math.min(2, Number(page.params.n ?? '1') - 1));
 	const data = new ProjectData(page.params.id ?? '');
@@ -255,6 +256,7 @@
 				variant="ghost"
 				size="icon"
 				disabled={!editor.canUndo}
+				{@attach haptic}
 				onclick={() => editor?.undo()}
 				aria-label="Undo"
 			>
@@ -264,6 +266,7 @@
 				variant="ghost"
 				size="icon"
 				disabled={!editor.canRedo}
+				{@attach haptic}
 				onclick={() => editor?.redo()}
 				aria-label="Redo"
 			>
@@ -280,6 +283,7 @@
 		<Button
 			variant="ghost"
 			size="icon"
+			{@attach haptic}
 			onclick={() => (mode = mode === 'edit' ? 'preview' : 'edit')}
 			aria-label={mode === 'edit' ? 'Preview slides' : 'Back to editing'}
 		>
@@ -302,6 +306,7 @@
 						? 'bg-secondary text-foreground'
 						: 'text-muted-foreground'}"
 					aria-pressed={zoom === 'overview'}
+					{@attach haptic}
 					onclick={() => (zoom = 'overview')}>Whole strip</button
 				>
 				<button
@@ -310,6 +315,7 @@
 						? 'bg-secondary text-foreground'
 						: 'text-muted-foreground'}"
 					aria-pressed={zoom === 'slide'}
+					{@attach haptic}
 					onclick={() => (zoom = 'slide')}>Slide</button
 				>
 			</div>
