@@ -302,8 +302,11 @@
 			return;
 		}
 
+		// Only an already-selected frame moves; dragging anywhere else scrolls the strip, so
+		// navigating never knocks a frame out of place.
 		const id = zoom === 'slide' ? frameAt(s.x, s.y) : null;
-		if (id) {
+		const sel = editor.selection;
+		if (id && sel?.kind === 'frame' && sel.id === id) {
 			const fr = carousel.frames.find((x) => x.id === id)!;
 			gesture = { kind: 'move', id, fx: s.x - fr.x, fy: s.y - fr.y };
 			return;
@@ -563,12 +566,22 @@
 			{#if zoom === 'slide'}
 				<text
 					x={r.x + r.w / 2}
-					y={r.y + r.h / 2}
+					y={r.y + r.h / 2 - 10}
 					text-anchor="middle"
-					fill="rgb(255 255 255 / 0.7)"
-					font-size="14"
+					fill="rgb(255 255 255 / 0.9)"
+					font-size="15"
+					font-weight="600"
 				>
-					Tap to choose a photo
+					{index === 0 ? 'Grid tile' : 'Background'}
+				</text>
+				<text
+					x={r.x + r.w / 2}
+					y={r.y + r.h / 2 + 12}
+					text-anchor="middle"
+					fill="rgb(255 255 255 / 0.65)"
+					font-size="13"
+				>
+					{index === 0 ? 'Tap to choose a portrait photo' : 'Tap to choose a photo'}
 				</text>
 			{/if}
 		{/each}
