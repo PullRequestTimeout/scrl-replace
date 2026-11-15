@@ -14,11 +14,15 @@
 	import EditorCanvas, { type Zoom } from '#lib/components/editor/EditorCanvas.svelte';
 	import EditorToolbar from '#lib/components/editor/EditorToolbar.svelte';
 	import PhotoTray from '#lib/components/editor/PhotoTray.svelte';
+	import RuleWarnings from '#lib/components/editor/RuleWarnings.svelte';
+	import { checkCarousel, type RuleWarning } from '#lib/layout/warnings.ts';
+	import { toLayoutPhotos } from '#lib/layout/types.ts';
+	import type { StylePreset } from '#lib/model/presets.ts';
 	import { ProjectData } from '#lib/stores/project-data.svelte.ts';
 	import { loadPreviewSources } from '#lib/render/preview-cache.ts';
 	import type { DrawSource } from '#lib/render/draw.ts';
 	import type { Carousel } from '#lib/model/layout.ts';
-	import { maxBackgroundWidth, photosIn } from '#lib/model/layout.ts';
+	import { frameOuter, maxBackgroundWidth, photosIn } from '#lib/model/layout.ts';
 	import type { Photo, PhotoId } from '#lib/model/types.ts';
 	import { Editor } from '#lib/editor/editor.svelte.ts';
 	import { addFrame, replacePhoto, swapPhotos, type ElementRef } from '#lib/editor/ops.ts';
@@ -56,6 +60,37 @@
 
 	const photoMap = $derived(new Map(data.photos.map((p) => [p.id, p])));
 
+	// ---------------------------------------------------------------------------
+	// Live rule warnings: checked shortly after edits settle, so drags stay smooth.
+
+	let preset = $state<StylePreset | null>(null);
+	let warnings = $state<RuleWarning[]>([]);
+	const layoutPhotos = $derived(new Map(toLayoutPhotos(data.photos).map((p) => [p.id, p])));
+
+	$effect(() => {
+		const c = editor?.carousel;
+		const p = preset;
+		const photos = layoutPhotos;
+		if (!c || !p) return;
+		const timer = setTimeout(() => (warnings = checkCarousel(c, photos, p)), 150);
+		return () => clearTimeout(timer);
+	});
+
+	function showWarning(w: RuleWarning) {
+		const t = w.target;
+		if (!editor || !t) return;
+		editor.select(t);
+		const c = editor.carousel;
+		if (t.kind === 'frame') {
+			const f = c.frames.find((x) => x.id === t.id);
+			if (f) zoomTo(frameOuter(f).x + frameOuter(f).w / 2);
+		} else {
+			const b = c.backgrounds[t.index];
+			// Join notes point at the background's left edge; others at the background itself.
+			if (b) zoomTo(w.key.startsWith('join-') ? b.x0 : (b.x0 + b.x1) / 2);
+		}
+	}
+
 	/** Portrait backgrounds never get wider than their natural width at full slide height. */
 	const widthLimit = (id: PhotoId) => {
 		const p = photoMap.get(id);
@@ -68,6 +103,7 @@
 			const carousel = data.project?.carousels?.[index];
 			if (!carousel) return;
 			editor = new Editor(structuredClone($state.snapshot(carousel)), scheduleSave, widthLimit);
+			preset = await data.preset();
 			// Decode every project photo once: replacing a photo should feel instant.
 			sources = await loadPreviewSources(data.photos);
 		})();
@@ -277,9 +313,12 @@
 					onclick={() => (zoom = 'slide')}>Slide</button
 				>
 			</div>
-			<span class="text-xs text-muted-foreground tabular-nums">
-				{editor.carousel.slideCount} slides
-			</span>
+			<div class="flex items-center gap-2">
+				<RuleWarnings {warnings} onShow={showWarning} />
+				<span class="text-xs text-muted-foreground tabular-nums">
+					{editor.carousel.slideCount} slides
+				</span>
+			</div>
 		</div>
 
 		<EditorCanvas

@@ -39,7 +39,7 @@ export interface Suggestion {
 	seed: number;
 }
 
-const MAX_SLIDES = 10;
+export const MAX_SLIDES = 10;
 const MIN_BG = 300;
 
 function spanRange(p: LayoutPhoto, preset: StylePreset): [number, number] {
