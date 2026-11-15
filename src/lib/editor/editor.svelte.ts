@@ -1,5 +1,5 @@
 import type { Carousel } from '#lib/model/layout.ts';
-import type { ElementRef } from './ops.ts';
+import { NO_LIMIT, type ElementRef, type WidthLimit } from './ops.ts';
 
 const MAX_HISTORY = 100;
 
@@ -23,9 +23,17 @@ export class Editor {
 	#gestureStart: string | null = null;
 	#onChange: (c: Carousel) => void;
 
-	constructor(initial: Carousel, onChange: (c: Carousel) => void) {
+	/** Background width caps (portrait photos), passed to the editing ops. */
+	widthLimit: WidthLimit;
+
+	constructor(
+		initial: Carousel,
+		onChange: (c: Carousel) => void,
+		widthLimit: WidthLimit = NO_LIMIT
+	) {
 		this.carousel = initial;
 		this.#onChange = onChange;
+		this.widthLimit = widthLimit;
 	}
 
 	#snapshot = () => JSON.stringify($state.snapshot(this.carousel));

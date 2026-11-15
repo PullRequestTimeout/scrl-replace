@@ -399,7 +399,7 @@
 			case 'join': {
 				const snapped = snapJoin(s.x, threshold);
 				guides = snapped.snapped ? [{ axis: 'x', at: snapped.x }] : [];
-				editor.preview(moveJoin(editor.carousel, gesture.index, snapped.x));
+				editor.preview(moveJoin(editor.carousel, gesture.index, snapped.x, editor.widthLimit));
 				break;
 			}
 			case 'crop': {

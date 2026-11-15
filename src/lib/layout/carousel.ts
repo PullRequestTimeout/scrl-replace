@@ -8,6 +8,7 @@ import {
 	CENTRED,
 	cropSource,
 	frameWidth,
+	maxBackgroundWidth,
 	structuralErrors,
 	type Background,
 	type Carousel,
@@ -43,6 +44,44 @@ const MIN_BG = 300;
 function spanRange(p: LayoutPhoto, preset: StylePreset): [number, number] {
 	const a = aspectOf(p);
 	return a > 1.15 ? preset.bgSpanLandscape : a < 0.87 ? preset.bgSpanPortrait : preset.bgSpanSquare;
+}
+
+/**
+ * Scale desired widths to sum to `target` without any exceeding its cap. Shrinking is always
+ * possible; growing only goes to backgrounds with room. Returns null if the target can't be
+ * reached (too few uncapped backgrounds), so the caller can use one slide fewer.
+ */
+export function distributeWidths(
+	desired: number[],
+	caps: number[],
+	target: number
+): number[] | null {
+	const w = [...desired];
+	let total = w.reduce((a, b) => a + b, 0);
+	if (total > target) {
+		const k = target / total;
+		for (let i = 0; i < w.length; i++) w[i] = Math.max(MIN_BG, w[i] * k);
+		total = w.reduce((a, b) => a + b, 0);
+	}
+	let diff = target - total;
+	for (let guard = 0; Math.abs(diff) > 0.5 && guard < 50; guard++) {
+		if (diff > 0) {
+			const room = w.map((v, i) => (caps[i] - v > 0.5 ? i : -1)).filter((i) => i >= 0);
+			if (!room.length) return null;
+			const share = diff / room.length;
+			for (const i of room) {
+				const add = Math.min(share, caps[i] - w[i]);
+				w[i] += add;
+				diff -= add;
+			}
+		} else {
+			const k = (total + diff) / total;
+			for (let i = 0; i < w.length; i++) w[i] *= k;
+			diff = 0;
+		}
+		total = w.reduce((a, b) => a + b, 0);
+	}
+	return w.map((v) => Math.round(v));
 }
 
 /** Order photos with time when every photo has it, otherwise import order. */
@@ -128,25 +167,44 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 	const framePhotos = ranked.slice(0, frameCount);
 	const bgPhotos = flowOrder(ranked.slice(frameCount), tilePhoto, r);
 
-	// 2. Background spans, scaled to a whole number of slides.
-	const spans = bgPhotos.map((p) => {
+	// 2. Background spans, fitted to a whole number of slides. Portrait backgrounds never grow
+	// past their natural width at full height, so only the others absorb extra space.
+	const caps = bgPhotos.map((p) => maxBackgroundWidth(p.width, p.height));
+	const desired = bgPhotos.map((p, i) => {
 		const [lo, hi] = spanRange(p, preset);
-		return r.range(lo, hi) * SLIDE_W;
+		return Math.min(caps[i], r.range(lo, hi) * SLIDE_W);
 	});
-	const raw = spans.reduce((a, b) => a + b, 0);
-	const slideCount = Math.max(2, Math.min(MAX_SLIDES, Math.round(raw / SLIDE_W) + 1));
-	const k = ((slideCount - 1) * SLIDE_W) / raw;
-	const widths = spans.map((s) => Math.max(MIN_BG, s * k));
-	// Re-normalise after the minimum clamp.
-	const k2 = ((slideCount - 1) * SLIDE_W) / widths.reduce((a, b) => a + b, 0);
+	let slideCount = Math.max(
+		2,
+		Math.min(MAX_SLIDES, Math.round(desired.reduce((a, b) => a + b, 0) / SLIDE_W) + 1)
+	);
+	let widths = distributeWidths(desired, caps, (slideCount - 1) * SLIDE_W);
+	while (!widths && slideCount > 2) {
+		slideCount -= 1;
+		widths = distributeWidths(desired, caps, (slideCount - 1) * SLIDE_W);
+	}
+	if (!widths) return null;
 	const backgrounds: Background[] = [tileBg];
 	let x = SLIDE_W;
 	bgPhotos.forEach((p, i) => {
-		const w = i === bgPhotos.length - 1 ? slideCount * SLIDE_W - x : Math.round(widths[i] * k2);
+		const w = i === bgPhotos.length - 1 ? slideCount * SLIDE_W - x : widths[i];
 		backgrounds.push({ photoId: p.id, x0: x, x1: x + w, crop: subjectCrop(p) });
 		x += w;
 	});
 	const W = slideCount * SLIDE_W;
+	const capOf = (b: Background) => {
+		const p = b.photoId ? input.photoMap.get(b.photoId) : undefined;
+		return p ? maxBackgroundWidth(p.width, p.height) : Infinity;
+	};
+	/** Where the join before background i may go, keeping minimum widths and portrait caps. */
+	const joinLimits = (i: number): [number, number] => {
+		const left = backgrounds[i - 1];
+		const right = backgrounds[i];
+		return [
+			Math.max(left.x0 + MIN_BG, right.x1 - capOf(right)),
+			Math.min(right.x1 - MIN_BG, left.x0 + capOf(left))
+		];
+	};
 
 	// 3. Frames. Measured from the reference posts: most frames are centred on one slide
 	// (both ways, ~75–88% of its height) with a background join hidden underneath; now and
@@ -184,12 +242,12 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 		let bestD = Infinity;
 		for (let i = 2; i < backgrounds.length; i++) {
 			const d = Math.abs(backgrounds[i].x0 - centre);
-			const lo = backgrounds[i - 1].x0 + MIN_BG;
-			const hi = backgrounds[i].x1 - MIN_BG;
+			const [lo, hi] = joinLimits(i);
 			if (d < bestD && centre >= lo && centre <= hi) [best, bestD] = [i, d];
 		}
 		if (best < 0 || bestD > SLIDE_W * 1.2) return;
-		const at = Math.round(centre + r.range(-0.15, 0.15) * (x1 - x0));
+		const [lo, hi] = joinLimits(best);
+		const at = Math.round(Math.min(hi, Math.max(lo, centre + r.range(-0.15, 0.15) * (x1 - x0))));
 		backgrounds[best - 1].x1 = at;
 		backgrounds[best].x0 = at;
 	};
@@ -287,8 +345,8 @@ export function generateCarousel(input: CarouselInput, seed: number): Carousel |
 		const d = at - nearest;
 		if (Math.abs(d) >= preset.joinClearance) continue;
 		const target = nearest + (d >= 0 ? 1 : -1) * preset.joinClearance;
-		const lo = backgrounds[i - 1].x0 + MIN_BG;
-		const hi = backgrounds[i].x1 - MIN_BG;
+		const [lo, hi] = joinLimits(i);
+		if (lo > hi) continue;
 		const moved = Math.round(Math.min(hi, Math.max(lo, target)));
 		backgrounds[i - 1].x1 = moved;
 		backgrounds[i].x0 = moved;

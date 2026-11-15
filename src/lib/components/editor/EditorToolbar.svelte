@@ -213,7 +213,8 @@
 			<Button
 				variant="ghost"
 				class="h-auto flex-col py-2 text-xs"
-				onclick={() => editor.apply(frameToBackground(editor.carousel, frame.id))}
+				onclick={() =>
+					editor.apply(frameToBackground(editor.carousel, frame.id, editor.widthLimit))}
 				><PanelTopIcon />To background</Button
 			>
 			<Button
@@ -257,13 +258,14 @@
 				class="h-auto flex-col py-2 text-xs"
 				disabled={!bg.photoId || editor.carousel.backgrounds.length < 2}
 				onclick={() =>
-					editor.apply(backgroundToFrame(editor.carousel, bgIndex, photoAspect(bg.photoId)))}
-				><FrameIcon />To frame</Button
+					editor.apply(
+						backgroundToFrame(editor.carousel, bgIndex, photoAspect(bg.photoId), editor.widthLimit)
+					)}><FrameIcon />To frame</Button
 			>
 			<Button
 				variant="ghost"
 				class="h-auto flex-col py-2 text-xs text-destructive"
-				onclick={() => editor.apply(deleteBackground(editor.carousel, bgIndex))}
+				onclick={() => editor.apply(deleteBackground(editor.carousel, bgIndex, editor.widthLimit))}
 				><Trash2Icon />{editor.carousel.backgrounds.length > 1 ? 'Delete' : 'Clear'}</Button
 			>
 		</div>

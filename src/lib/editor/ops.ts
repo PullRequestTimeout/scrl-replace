@@ -162,18 +162,41 @@ export function backgroundAt(c: Carousel, x: number): number {
 	return i >= 0 ? i : c.backgrounds.length - 1;
 }
 
-/** Allowed range for the join between background i-1 and i. Slide 1 always stays one photo (R3). */
-export function joinRange(c: Carousel, i: number): [number, number] {
+/**
+ * Widest each photo may be as a background (see maxBackgroundWidth): portrait photos are
+ * never cropped top and bottom to fill a wider space. Callers that know photo sizes pass
+ * one; without it nothing is capped.
+ */
+export type WidthLimit = (photoId: PhotoId) => number;
+export const NO_LIMIT: WidthLimit = () => Infinity;
+
+/** Cap for background i. Slide 1 (the grid tile) always fills its slide, so it's exempt. */
+const capAt = (c: Carousel, i: number, limit: WidthLimit) => {
+	const id = c.backgrounds[i]?.photoId;
+	return i === 0 || !id ? Infinity : limit(id);
+};
+
+/**
+ * Allowed range for the join between background i-1 and i: minimum widths, slide 1 stays one
+ * photo (R3), and neither side grows past its width cap.
+ */
+export function joinRange(c: Carousel, i: number, limit: WidthLimit = NO_LIMIT): [number, number] {
 	const left = c.backgrounds[i - 1];
 	const right = c.backgrounds[i];
-	const lo = Math.max(left.x0 + MIN_BG_WIDTH, i === 1 ? SLIDE_W : 0);
-	const hi = right.x1 - MIN_BG_WIDTH;
-	return [lo, Math.max(lo, hi)];
+	const lo = Math.max(left.x0 + MIN_BG_WIDTH, i === 1 ? SLIDE_W : 0, right.x1 - capAt(c, i, limit));
+	const hi = Math.min(right.x1 - MIN_BG_WIDTH, left.x0 + capAt(c, i - 1, limit));
+	// If the caps leave no room, the join stays where it is.
+	return lo <= hi ? [lo, hi] : [right.x0, right.x0];
 }
 
-export function moveJoin(c: Carousel, i: number, x: number): Carousel {
+export function moveJoin(
+	c: Carousel,
+	i: number,
+	x: number,
+	limit: WidthLimit = NO_LIMIT
+): Carousel {
 	if (i <= 0 || i >= c.backgrounds.length) return c;
-	const [lo, hi] = joinRange(c, i);
+	const [lo, hi] = joinRange(c, i, limit);
 	const at = Math.round(clamp(x, lo, hi));
 	const next = clone(c);
 	next.backgrounds[i - 1].x1 = at;
@@ -188,21 +211,45 @@ export function setBackgroundCrop(c: Carousel, i: number, crop: Crop): Carousel 
 	return next;
 }
 
-export function setBackgroundPhoto(c: Carousel, i: number, photoId: PhotoId): Carousel {
+/**
+ * Put a photo on background i. If the slot is wider than the photo may be, the photo takes
+ * only its allowed width and the rest becomes an empty slot after it.
+ */
+export function setBackgroundPhoto(
+	c: Carousel,
+	i: number,
+	photoId: PhotoId,
+	limit: WidthLimit = NO_LIMIT
+): Carousel {
 	const next = clone(c);
-	if (!next.backgrounds[i]) return c;
-	next.backgrounds[i] = { ...next.backgrounds[i], photoId, crop: { ...CENTRED } };
+	const b = next.backgrounds[i];
+	if (!b) return c;
+	next.backgrounds[i] = { ...b, photoId, crop: { ...CENTRED } };
+	const cap = i === 0 ? Infinity : limit(photoId);
+	if (b.x1 - b.x0 > cap + 1) {
+		const at = Math.round(b.x0 + cap);
+		next.backgrounds[i].x1 = at;
+		next.backgrounds.splice(i + 1, 0, { photoId: null, x0: at, x1: b.x1, crop: { ...CENTRED } });
+	}
 	return next;
 }
 
-/** Remove a background; its neighbour (left, or right for the first) takes its space. */
-export function deleteBackground(c: Carousel, i: number): Carousel {
-	if (c.backgrounds.length <= 1) {
-		// Last one: keep the slot, just empty it.
+/**
+ * Remove a background; its neighbour (left, or right for the first) takes its space. If the
+ * neighbour can't grow that much (a portrait photo), the slot is emptied instead.
+ */
+export function deleteBackground(c: Carousel, i: number, limit: WidthLimit = NO_LIMIT): Carousel {
+	const emptied = () => {
 		const next = clone(c);
-		next.backgrounds[0] = { ...next.backgrounds[0], photoId: null, crop: { ...CENTRED } };
+		next.backgrounds[i] = { ...next.backgrounds[i], photoId: null, crop: { ...CENTRED } };
 		return next;
-	}
+	};
+	if (c.backgrounds.length <= 1) return emptied();
+	const neighbour = i === 0 ? 1 : i - 1;
+	const width = (k: number) => c.backgrounds[k].x1 - c.backgrounds[k].x0;
+	// Deleting the first makes its neighbour the new grid tile, which is exempt from caps.
+	const neighbourCap = i === 0 ? Infinity : capAt(c, neighbour, limit);
+	if (width(neighbour) + width(i) > neighbourCap + 1) return emptied();
 	const next = clone(c);
 	const [removed] = next.backgrounds.splice(i, 1);
 	if (i === 0) next.backgrounds[0].x0 = 0;
@@ -212,46 +259,52 @@ export function deleteBackground(c: Carousel, i: number): Carousel {
 
 /**
  * Split background i at x, putting `photoId` on the right part. If either part would be
- * narrower than the minimum, the whole background gets the photo instead.
+ * narrower than the minimum, the whole background gets the photo instead. The new photo
+ * never exceeds its width cap; any extra becomes an empty slot.
  */
 export function splitBackground(
 	c: Carousel,
 	i: number,
 	x: number,
-	photoId: PhotoId | null
+	photoId: PhotoId | null,
+	limit: WidthLimit = NO_LIMIT
 ): Carousel {
 	const b = c.backgrounds[i];
 	if (!b) return c;
 	const lo = Math.max(b.x0 + MIN_BG_WIDTH, i === 0 ? SLIDE_W : 0);
 	const hi = b.x1 - MIN_BG_WIDTH;
-	if (lo > hi) return photoId ? setBackgroundPhoto(c, i, photoId) : c;
+	if (lo > hi) return photoId ? setBackgroundPhoto(c, i, photoId, limit) : c;
 	const at = Math.round(clamp(x, lo, hi));
 	const next = clone(c);
-	const right: Background = { photoId, x0: at, x1: b.x1, crop: { ...CENTRED } };
 	next.backgrounds[i] = { ...b, x1: at };
-	next.backgrounds.splice(i + 1, 0, right);
-	return next;
+	next.backgrounds.splice(i + 1, 0, { photoId: null, x0: at, x1: b.x1, crop: { ...CENTRED } });
+	return photoId ? setBackgroundPhoto(next, i + 1, photoId, limit) : next;
 }
 
 // ---------------------------------------------------------------------------
 // Converting and swapping
 
 /** Turn a frame into a background: split the background under its centre there. */
-export function frameToBackground(c: Carousel, id: string): Carousel {
+export function frameToBackground(c: Carousel, id: string, limit: WidthLimit = NO_LIMIT): Carousel {
 	const f = c.frames.find((fr) => fr.id === id);
 	if (!f) return c;
 	const cx = f.x + frameWidth(f) / 2;
 	const without = deleteFrame(c, id);
-	return splitBackground(without, backgroundAt(without, cx), cx, f.photoId);
+	return splitBackground(without, backgroundAt(without, cx), cx, f.photoId, limit);
 }
 
 /** Turn a background into a frame centred on it; its neighbour fills the gap. */
-export function backgroundToFrame(c: Carousel, i: number, photoAspect: number): Carousel {
+export function backgroundToFrame(
+	c: Carousel,
+	i: number,
+	photoAspect: number,
+	limit: WidthLimit = NO_LIMIT
+): Carousel {
 	const b = c.backgrounds[i];
 	if (!b?.photoId) return c;
 	const cx = (b.x0 + b.x1) / 2;
 	if (c.backgrounds.length <= 1) return c; // nothing would be left behind it
-	return addFrame(deleteBackground(c, i), b.photoId, photoAspect, cx);
+	return addFrame(deleteBackground(c, i, limit), b.photoId, photoAspect, cx);
 }
 
 export type ElementRef = { kind: 'frame'; id: string } | { kind: 'bg'; index: number };
@@ -270,9 +323,10 @@ export function replacePhoto(
 	c: Carousel,
 	ref: ElementRef,
 	photoId: PhotoId,
-	photoAspect: number
+	photoAspect: number,
+	limit: WidthLimit = NO_LIMIT
 ): Carousel {
-	if (ref.kind === 'bg') return setBackgroundPhoto(c, ref.index, photoId);
+	if (ref.kind === 'bg') return setBackgroundPhoto(c, ref.index, photoId, limit);
 	const f = c.frames.find((fr) => fr.id === ref.id);
 	if (!f) return c;
 	const withAspect = setFrameAspect(c, ref.id, photoAspect);
@@ -284,12 +338,19 @@ export function swapPhotos(
 	c: Carousel,
 	a: ElementRef,
 	b: ElementRef,
-	aspectOf: (id: PhotoId) => number
+	aspectOf: (id: PhotoId) => number,
+	limit: WidthLimit = NO_LIMIT
 ): Carousel {
 	const pa = photoOf(c, a);
 	const pb = photoOf(c, b);
 	if (!pa || !pb) return c;
-	return replacePhoto(replacePhoto(c, a, pb, aspectOf(pb)), b, pa, aspectOf(pa));
+	// Placing a capped photo can insert an empty slot after it, shifting later indices, so
+	// change the later background first.
+	const order = (r: ElementRef) => (r.kind === 'bg' ? r.index : -1);
+	const [first, firstPhoto, second, secondPhoto] =
+		order(a) >= order(b) ? [a, pb, b, pa] : [b, pa, a, pb];
+	const step = replacePhoto(c, first, firstPhoto, aspectOf(firstPhoto), limit);
+	return replacePhoto(step, second, secondPhoto, aspectOf(secondPhoto), limit);
 }
 
 // ---------------------------------------------------------------------------

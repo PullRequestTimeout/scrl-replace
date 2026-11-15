@@ -250,3 +250,55 @@ describe('snapping', () => {
 		expect(snapJoin(2500, 20)).toEqual({ x: 2500, snapped: false });
 	});
 });
+
+describe('portrait width caps', () => {
+	// 'p' is a 4:5 portrait (cap 1080), 'q' a 2:3 portrait (cap 900); others uncapped.
+	const limit = (id: string) => (id === 'p' ? 1080 : id === 'q' ? 900 : Infinity);
+
+	it('stops a join before a portrait background grows past its cap', () => {
+		const c = replacePhoto(sample(), { kind: 'bg', index: 2 }, 'p', 0.8, limit);
+		// 'p' was given only 1080 of the 1320 slot; the rest is empty.
+		expect(c.backgrounds.map((b) => [b.photoId, b.x0, b.x1])).toEqual([
+			['a', 0, 1080],
+			['b', 1080, 3000],
+			['p', 3000, 4080],
+			[null, 4080, 4320]
+		]);
+		// Dragging the b|p join left can't widen p beyond 1080.
+		const moved = moveJoin(c, 2, 2000, limit);
+		expect(moved.backgrounds[2].x1 - moved.backgrounds[2].x0).toBeLessThanOrEqual(1080);
+		valid(moved);
+	});
+
+	it('empties the slot instead of stretching a portrait neighbour on delete', () => {
+		const c = replacePhoto(sample(), { kind: 'bg', index: 1 }, 'q', 0.667, limit);
+		// q (index 1) now 900 wide with an empty slot after it; delete the 'c' background after that.
+		const idx = c.backgrounds.findIndex((b) => b.photoId === 'c');
+		const d = deleteBackground(c, idx, limit);
+		// Its left neighbour is the empty slot, which can grow freely.
+		expect(d.backgrounds.some((b) => b.photoId === 'c')).toBe(false);
+		valid(d);
+		// But deleting the empty slot next to q leaves it empty rather than stretching q.
+		const emptyIdx = c.backgrounds.findIndex((b) => b.photoId === null);
+		const e = deleteBackground(c, emptyIdx, limit);
+		expect(e.backgrounds[emptyIdx].photoId).toBeNull();
+		expect(e.backgrounds[1].x1 - e.backgrounds[1].x0).toBe(900);
+	});
+
+	it('swaps backgrounds without losing track of indices when a slot is inserted', () => {
+		const s = swapPhotos(
+			sample(),
+			{ kind: 'bg', index: 1 },
+			{ kind: 'bg', index: 2 },
+			() => 1.5,
+			(id) => (id === 'c' ? 1080 : Infinity)
+		);
+		expect(s.backgrounds.map((b) => b.photoId)).toEqual(['a', 'c', null, 'b']);
+		valid(s);
+	});
+
+	it('exempts the grid tile', () => {
+		const c = replacePhoto(sample(), { kind: 'bg', index: 0 }, 'q', 0.667, limit);
+		expect(c.backgrounds[0]).toMatchObject({ photoId: 'q', x0: 0, x1: 1080 });
+	});
+});

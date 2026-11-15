@@ -18,7 +18,7 @@
 	import { loadPreviewSources } from '#lib/render/preview-cache.ts';
 	import type { DrawSource } from '#lib/render/draw.ts';
 	import type { Carousel } from '#lib/model/layout.ts';
-	import { photosIn } from '#lib/model/layout.ts';
+	import { maxBackgroundWidth, photosIn } from '#lib/model/layout.ts';
 	import type { Photo, PhotoId } from '#lib/model/types.ts';
 	import { Editor } from '#lib/editor/editor.svelte.ts';
 	import { addFrame, replacePhoto, swapPhotos, type ElementRef } from '#lib/editor/ops.ts';
@@ -56,12 +56,18 @@
 
 	const photoMap = $derived(new Map(data.photos.map((p) => [p.id, p])));
 
+	/** Portrait backgrounds never get wider than their natural width at full slide height. */
+	const widthLimit = (id: PhotoId) => {
+		const p = photoMap.get(id);
+		return p ? maxBackgroundWidth(p.width, p.height) : Infinity;
+	};
+
 	$effect(() => {
 		void (async () => {
 			await data.load();
 			const carousel = data.project?.carousels?.[index];
 			if (!carousel) return;
-			editor = new Editor(structuredClone($state.snapshot(carousel)), scheduleSave);
+			editor = new Editor(structuredClone($state.snapshot(carousel)), scheduleSave, widthLimit);
 			// Decode every project photo once: replacing a photo should feel instant.
 			sources = await loadPreviewSources(data.photos);
 		})();
@@ -139,7 +145,7 @@
 			const added = editor.carousel.frames.at(-1);
 			if (added) editor.select({ kind: 'frame', id: added.id });
 		} else if (t.kind === 'replace') {
-			editor.apply(replacePhoto(editor.carousel, t.ref, photo.id, aspect));
+			editor.apply(replacePhoto(editor.carousel, t.ref, photo.id, aspect, widthLimit));
 		} else {
 			// Swap with whichever element in this carousel uses the picked photo.
 			const c = editor.carousel;
@@ -154,7 +160,7 @@
 				toast('Pick a photo that’s already in this carousel to swap with');
 				return;
 			}
-			editor.apply(swapPhotos(c, t.ref, other, aspectOf));
+			editor.apply(swapPhotos(c, t.ref, other, aspectOf, widthLimit));
 		}
 	}
 

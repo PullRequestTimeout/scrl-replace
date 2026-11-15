@@ -46,6 +46,16 @@ export interface Carousel {
 
 export const stripWidth = (c: Carousel) => c.slideCount * SLIDE_W;
 
+/**
+ * Widest a background may be for a photo of this size. Portrait photos are never cropped top
+ * and bottom to fill a wider space: at most they're as tall as the slide, so their width is
+ * capped at their natural width at full slide height. (The grid tile is the one exception:
+ * it always fills slide 1.)
+ */
+export function maxBackgroundWidth(photoW: number, photoH: number): number {
+	return photoH > photoW ? Math.floor((SLIDE_H * photoW) / photoH) : Infinity;
+}
+
 /** Default border: about 3% of the frame's outer height (measured from the reference posts). */
 export const DEFAULT_BORDER_RATIO = 0.03;
 
