@@ -36,16 +36,15 @@
 		})();
 	});
 
-	/** The tile stays as chosen; the photos are this carousel's share (or whatever it uses now). */
+	/** The tile stays as chosen; the photos are whatever this carousel uses now. */
 	function inputs(): { tile: Background; photoIds: PhotoId[] } | null {
 		const project = data.project;
 		const current = project?.carousels?.[index];
 		if (!project || !current) return null;
 		const tile = $state.snapshot(current.backgrounds[0]) as Background;
 		if (!tile.photoId) return null;
-		const assigned = project.assignment?.[index];
-		const ids = assigned?.length ? assigned : photosIn(current).filter((id) => id !== tile.photoId);
-		return { tile, photoIds: [...new Set(ids)].filter((id) => id !== tile.photoId) };
+		const ids = photosIn(current).filter((id) => id !== tile.photoId);
+		return { tile, photoIds: [...new Set(ids)] };
 	}
 
 	async function generate() {

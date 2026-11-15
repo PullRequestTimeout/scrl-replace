@@ -15,7 +15,7 @@
 	import { imageWorker } from '#lib/workers/client.ts';
 	import { toLayoutPhotos } from '#lib/layout/types.ts';
 	import { rowPhotos } from '#lib/model/row.ts';
-	import type { Background, Carousel } from '#lib/model/layout.ts';
+	import { photosIn, type Background, type Carousel } from '#lib/model/layout.ts';
 	import type { PhotoId } from '#lib/model/types.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
@@ -38,12 +38,18 @@
 		void (async () => {
 			await data.load();
 			const project = data.project;
-			if (!project?.assignment) return;
-			const inRow = new Set(project.row ? rowPhotos(project.row) : []);
+			if (!project?.carousels || !canMove) return;
+			// Read what each carousel holds now, so hand edits in the editor count. Grid tiles
+			// (and the row's photos) stay put; a photo used twice counts for its first carousel.
+			const fixed = new Set([
+				...(project.row ? rowPhotos(project.row) : []),
+				...project.carousels.map((c) => c.backgrounds[0]?.photoId)
+			]);
 			const map = new Map<PhotoId, Group>();
-			project.assignment.forEach((ids, g) => ids.forEach((id) => map.set(id, g as Group)));
-			// Photos added after the suggestion (or never placed) start out unused.
-			for (const p of data.photos) if (!inRow.has(p.id) && !map.has(p.id)) map.set(p.id, UNUSED);
+			project.carousels.forEach((c, g) => {
+				for (const id of photosIn(c)) if (!fixed.has(id) && !map.has(id)) map.set(id, g as Slot);
+			});
+			for (const p of data.photos) if (!fixed.has(p.id) && !map.has(p.id)) map.set(p.id, UNUSED);
 			original = map;
 			groupOf = new Map(map);
 			void data.ensureAnalysis();
@@ -55,6 +61,8 @@
 	);
 	const members = $derived(GROUPS.map((g) => ordered.filter((id) => groupOf.get(id) === g)));
 	const tiles = $derived(data.project?.carousels?.map((c) => c.backgrounds[0]?.photoId) ?? []);
+	/** Rebuilding keeps each grid tile, so every carousel needs one. */
+	const canMove = $derived(tiles.length === 3 && tiles.every(Boolean));
 
 	/** Carousels whose set of photos differs from when the screen opened. */
 	const changed = $derived(
@@ -88,7 +96,7 @@
 	async function rebuild() {
 		confirming = false;
 		const project = data.project;
-		if (!project?.carousels || !project.assignment || !changed.length) return;
+		if (!project?.carousels || !canMove || !changed.length) return;
 		working = true;
 		try {
 			await data.ensureAnalysis();
@@ -136,10 +144,9 @@
 		</div>
 	{/if}
 
-	{#if data.loaded && !data.project?.assignment}
+	{#if data.loaded && !canMove}
 		<p class="px-4 text-sm text-muted-foreground">
-			Photos are shared between the carousels when you use a suggested grid row.
-			<a class="underline" href="/p/{page.params.id}/row">Get suggestions</a>
+			Choose a grid tile photo for each carousel first; rebuilt layouts start from it.
 		</p>
 	{:else if data.loaded}
 		<p class="px-4 text-xs text-muted-foreground">

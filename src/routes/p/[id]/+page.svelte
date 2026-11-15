@@ -91,7 +91,7 @@
 			<section class="flex flex-col gap-3">
 				<div class="flex items-center gap-2 px-4">
 					<h2 class="text-sm font-medium">Carousels</h2>
-					{#if project.assignment}
+					{#if project.kind !== 'reference' && carousels.every((c) => c.backgrounds[0]?.photoId)}
 						<a
 							href="/p/{project.id}/move"
 							class="text-xs text-muted-foreground underline underline-offset-4">Move photos</a

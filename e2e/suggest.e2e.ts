@@ -93,9 +93,28 @@ test('suggests a grid row, builds three carousels, and offers other layouts', as
 			db.close();
 			return projects[0];
 		});
+	// A hand edit (removing the right carousel's first frame) shows up on the move screen.
+	const removedId = await page.evaluate(async () => {
+		const db = await new Promise<IDBDatabase>((res) => {
+			const r = indexedDB.open('strip');
+			r.onsuccess = () => res(r.result);
+		});
+		const store = () => db.transaction('projects', 'readwrite').objectStore('projects');
+		const p = await new Promise<{ carousels: { frames: { photoId: string }[] }[] }>((res) => {
+			const q = store().getAll();
+			q.onsuccess = () => res(q.result[0]);
+		});
+		const [frame] = p.carousels[2].frames.splice(0, 1);
+		await new Promise((res) => (store().put(p).onsuccess = res));
+		db.close();
+		return frame.photoId;
+	});
+	await page.reload();
 	const before = await readProject();
 	const movedId = before.assignment[0][0];
 	await page.getByRole('link', { name: 'Move photos' }).click();
+	await expect(page.getByRole('region', { name: 'Not used' }).getByRole('button')).toHaveCount(1);
+	expect(before.carousels[2].frames.map((f) => f.photoId)).not.toContain(removedId);
 	const left = page.getByRole('region', { name: 'Left carousel' });
 	await left.getByRole('button').first().click();
 	await page.getByRole('menuitem', { name: 'Move to middle' }).click();
