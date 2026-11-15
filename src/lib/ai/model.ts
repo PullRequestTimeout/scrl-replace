@@ -7,8 +7,7 @@ import textEmbeddings from './text-embeddings.json';
 
 export type AiBackend = 'webgpu' | 'wasm';
 
-/** Bump when the model, prompts or scoring change, so stored results are recomputed. */
-export const SUBJECT_VERSION = 1;
+export { SUBJECT_VERSION } from './prefs.ts';
 
 /**
  * The fp16 vision model (22.9 MB) matches full precision exactly; the int8 one is broken

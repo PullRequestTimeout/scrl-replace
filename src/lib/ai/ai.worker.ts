@@ -65,7 +65,10 @@ async function download(url: string, onProgress?: Progress): Promise<Uint8Array<
 }
 
 /** Read a file from the cache, downloading and storing it first if needed. */
-async function cached(url: string, onProgress?: Progress): Promise<[Uint8Array<ArrayBuffer>, boolean]> {
+async function cached(
+	url: string,
+	onProgress?: Progress
+): Promise<[Uint8Array<ArrayBuffer>, boolean]> {
 	const cache = await caches.open(AI_CACHE);
 	const hit = await cache.match(url);
 	if (hit) return [new Uint8Array(await hit.arrayBuffer()), true];

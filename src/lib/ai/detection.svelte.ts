@@ -14,13 +14,14 @@ import {
 	type AiBackend,
 	type SubjectInfo
 } from './model.ts';
+import { SUBJECT_PREF_KEY } from './prefs.ts';
 import type { AiWorkerApi } from './ai.worker.ts';
 import AiWorker from './ai.worker.ts?worker';
 
 export type DetectionStatus =
 	'checking' | 'unsupported' | 'off' | 'downloading' | 'testing' | 'on' | 'too-slow' | 'error';
 
-const PREF_KEY = 'pref:subject-detection';
+const PREF_KEY = SUBJECT_PREF_KEY;
 const BENCH_KEY = 'pref:subject-detection-bench';
 
 /** Above this model time per photo on the speed test, the feature stays off. */
