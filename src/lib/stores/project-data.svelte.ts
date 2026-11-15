@@ -2,6 +2,7 @@ import type { Photo, Project, ProjectId } from '#lib/model/types.ts';
 import { getPhotos, getProject, saveProject, savePhotoAnalyses } from '#lib/storage/projects.ts';
 import { hasCurrentAnalysis } from '#lib/layout/types.ts';
 import { imageWorker } from '#lib/workers/client.ts';
+import { subjectDetection } from '#lib/ai/detection.svelte.ts';
 import { buildReferenceCarousels, matchReferencePhotos } from '#lib/fixtures/reference.ts';
 import type { ReferencePhoto } from '#lib/fixtures/reference-carousels.ts';
 import { getPreset } from '#lib/storage/presets.ts';
@@ -49,6 +50,8 @@ export class ProjectData {
 
 	/** Analyse any photos imported before analysis existed (or with an outdated version). */
 	async ensureAnalysis() {
+		// Results are only stored for now; suggestions don't use them yet.
+		void subjectDetection.ensureSubjects($state.snapshot(this.photos));
 		const missing = this.photos.filter((p) => !hasCurrentAnalysis(p));
 		if (!missing.length) return;
 		this.analysing = { done: 0, total: missing.length };

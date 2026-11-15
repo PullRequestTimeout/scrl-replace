@@ -1,6 +1,7 @@
 import type { Carousel } from './layout.ts';
 import type { GridRow } from './row.ts';
 import type { PhotoAnalysis } from '#lib/analysis/types.ts';
+import type { SubjectInfo } from '#lib/ai/model.ts';
 
 export type PhotoId = string;
 export type ProjectId = string;
@@ -26,6 +27,8 @@ export interface Photo {
 	fileSize: number;
 	/** Image statistics for suggestions; recomputed when ANALYSIS_VERSION changes. */
 	analysis?: PhotoAnalysis;
+	/** On-device subject detection, when turned on; recomputed when SUBJECT_VERSION changes. */
+	subject?: SubjectInfo;
 }
 
 export interface Project {
