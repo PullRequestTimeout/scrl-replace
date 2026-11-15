@@ -101,6 +101,7 @@
 		try {
 			await data.ensureAnalysis();
 			const photos = toLayoutPhotos(data.photos);
+			const preset = await data.preset();
 			const carousels = $state.snapshot(project.carousels) as [Carousel, Carousel, Carousel];
 			const assignment = [members[0], members[1], members[2]].map((m) => [...m]) as [
 				PhotoId[],
@@ -113,7 +114,7 @@
 				if (!tile?.photoId) continue;
 				const ids = assignment[g].filter((id) => id !== tile.photoId);
 				const [best] = ids.length
-					? await imageWorker().suggestFor(tile, ids, photos, seed + g)
+					? await imageWorker().suggestFor(tile, ids, photos, preset, seed + g)
 					: [];
 				carousels[g] = best ?? { slideCount: 1, backgrounds: [tile], frames: [] };
 			}

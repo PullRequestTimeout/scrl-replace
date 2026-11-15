@@ -4,6 +4,8 @@ import { hasCurrentAnalysis } from '#lib/layout/types.ts';
 import { imageWorker } from '#lib/workers/client.ts';
 import { buildReferenceCarousels, matchReferencePhotos } from '#lib/fixtures/reference.ts';
 import type { ReferencePhoto } from '#lib/fixtures/reference-carousels.ts';
+import { getPreset } from '#lib/storage/presets.ts';
+import type { StylePreset } from '#lib/model/presets.ts';
 
 /** A project and its photos, loaded for one screen. */
 export class ProjectData {
@@ -50,6 +52,11 @@ export class ProjectData {
 			this.analysing = { done: Math.min(missing.length, i + BATCH), total: missing.length };
 		}
 		this.analysing = null;
+	}
+
+	/** The project's style preset (the default if it was deleted), ready to send to the worker. */
+	preset(): Promise<StylePreset> {
+		return getPreset(this.project?.presetId);
 	}
 
 	photoMap(): Map<string, Photo> {

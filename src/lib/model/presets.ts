@@ -1,6 +1,7 @@
 /**
  * Style presets: the numbers behind "your style". Soft rules from PLAN.md §2 become weighted
- * score terms; ranges drive generation. Phase 5 adds a UI to save and switch presets.
+ * score terms; ranges drive generation. The built-in default is read-only (the calibration
+ * tests measure it); your own presets are copies of it, stored in IndexedDB.
  */
 export interface StylePreset {
 	id: string;
@@ -81,3 +82,57 @@ export const DEFAULT_PRESET: StylePreset = {
 		subjectCut: 1
 	}
 };
+
+export const DEFAULT_PRESET_ID = DEFAULT_PRESET.id;
+
+type RangeKey = 'frameHeight' | 'bgSpanLandscape' | 'bgSpanPortrait' | 'bgSpanSquare';
+type NumberKey = 'borderRatio' | 'joinClearance' | 'frameMargin' | 'frameGap';
+
+/** Editable limits for each setting; the editor's sliders use these too. */
+export const RANGE_LIMITS: Record<RangeKey, { min: number; max: number; step: number }> = {
+	frameHeight: { min: 0.2, max: 1, step: 0.05 },
+	bgSpanLandscape: { min: 0.5, max: 4, step: 0.1 },
+	bgSpanPortrait: { min: 0.5, max: 4, step: 0.1 },
+	bgSpanSquare: { min: 0.5, max: 4, step: 0.1 }
+};
+export const NUMBER_LIMITS: Record<NumberKey, { min: number; max: number; step: number }> = {
+	borderRatio: { min: 0, max: 0.1, step: 0.005 },
+	joinClearance: { min: 0, max: 300, step: 10 },
+	frameMargin: { min: 0, max: 200, step: 10 },
+	frameGap: { min: 0, max: 1, step: 0.05 }
+};
+export const WEIGHT_LIMITS = { min: 0, max: 5, step: 0.25 };
+
+const clamp = (v: unknown, lo: number, hi: number, fallback: number) =>
+	typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+
+/**
+ * A complete, valid preset from whatever was stored: missing settings (e.g. weights added in a
+ * later version) come from the default, numbers are clamped and ranges kept in order.
+ */
+export function normalizePreset(raw: Partial<StylePreset> & { id: string }): StylePreset {
+	const d = DEFAULT_PRESET;
+	const out: StylePreset = structuredClone(d);
+	out.id = raw.id;
+	out.name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : d.name;
+	for (const key of Object.keys(NUMBER_LIMITS) as NumberKey[]) {
+		const { min, max } = NUMBER_LIMITS[key];
+		out[key] = clamp(raw[key], min, max, d[key]);
+	}
+	for (const key of Object.keys(RANGE_LIMITS) as RangeKey[]) {
+		const { min, max } = RANGE_LIMITS[key];
+		const r = Array.isArray(raw[key]) ? raw[key] : d[key];
+		const a = clamp(r[0], min, max, d[key][0]);
+		const b = clamp(r[1], min, max, d[key][1]);
+		out[key] = [Math.min(a, b), Math.max(a, b)];
+	}
+	for (const key of Object.keys(d.weights) as (keyof ScoreWeights)[]) {
+		out.weights[key] = clamp(
+			raw.weights?.[key],
+			WEIGHT_LIMITS.min,
+			WEIGHT_LIMITS.max,
+			d.weights[key]
+		);
+	}
+	return out;
+}

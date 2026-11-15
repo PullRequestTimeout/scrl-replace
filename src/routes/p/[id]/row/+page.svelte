@@ -177,6 +177,7 @@
 			const plan = await imageWorker().planCarousels(
 				row,
 				toLayoutPhotos(data.photos),
+				await data.preset(),
 				Date.now() % 100_000
 			);
 			const carousels = plan.suggestions.map((s) => s[0]) as [Carousel, Carousel, Carousel];

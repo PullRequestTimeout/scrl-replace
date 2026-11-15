@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Photo, PhotoId, Project, ProjectId } from '#lib/model/types.ts';
 import type { ImageVariant } from '#lib/model/constants.ts';
+import type { StylePreset } from '#lib/model/presets.ts';
 
 /**
  * Everything lives in IndexedDB, including image files: Safari stores Blobs in IndexedDB
@@ -11,10 +12,12 @@ interface StripDB extends DBSchema {
 	photos: { key: PhotoId; value: Photo };
 	/** Key: `${photoId}/${variant}` */
 	blobs: { key: string; value: Blob };
+	/** Your own style presets. The built-in default isn't stored. */
+	presets: { key: string; value: StylePreset };
 }
 
 const DB_NAME = 'strip';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<StripDB>> | undefined;
 
@@ -27,6 +30,7 @@ export function db(): Promise<IDBPDatabase<StripDB>> {
 				database.createObjectStore('photos', { keyPath: 'id' });
 				database.createObjectStore('blobs');
 			}
+			if (oldVersion < 2) database.createObjectStore('presets', { keyPath: 'id' });
 		},
 		blocked() {
 			console.warn('Database upgrade blocked by another open tab');

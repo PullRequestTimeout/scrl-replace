@@ -59,6 +59,7 @@
 				input.tile,
 				input.photoIds,
 				toLayoutPhotos(data.photos),
+				await data.preset(),
 				seed
 			);
 		} catch (e) {

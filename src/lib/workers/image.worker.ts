@@ -33,7 +33,7 @@ import { assignPhotos } from '#lib/layout/assign.ts';
 import { suggestCarousels } from '#lib/layout/carousel.ts';
 import type { LayoutPhoto } from '#lib/layout/types.ts';
 import { rowTiles, type GridRow } from '#lib/model/row.ts';
-import { DEFAULT_PRESET } from '#lib/model/presets.ts';
+import type { StylePreset } from '#lib/model/presets.ts';
 
 export interface ProcessedImage {
 	width: number;
@@ -246,7 +246,7 @@ const api = {
 	 * Given a chosen row: share the photos out, then suggest layouts for each carousel.
 	 * Returns the assignment and the suggestions per carousel (best first).
 	 */
-	planCarousels(row: GridRow, photos: LayoutPhoto[], seed = 1) {
+	planCarousels(row: GridRow, photos: LayoutPhoto[], preset: StylePreset, seed = 1) {
 		const map = new Map(photos.map((p) => [p.id, p]));
 		const assignment = assignPhotos(row, photos);
 		const tiles = rowTiles(row, (id) => map.get(id)!);
@@ -256,7 +256,7 @@ const api = {
 					tile,
 					photos: assignment[i].map((id) => map.get(id)!),
 					photoMap: map,
-					preset: DEFAULT_PRESET
+					preset
 				},
 				{ count: 4, tries: 250, seed: seed + i }
 			).map((s) => s.carousel)
@@ -265,14 +265,20 @@ const api = {
 	},
 
 	/** More layouts for one carousel, keeping its photos. */
-	suggestFor(tile: Background, photoIds: PhotoId[], photos: LayoutPhoto[], seed: number) {
+	suggestFor(
+		tile: Background,
+		photoIds: PhotoId[],
+		photos: LayoutPhoto[],
+		preset: StylePreset,
+		seed: number
+	) {
 		const map = new Map(photos.map((p) => [p.id, p]));
 		return suggestCarousels(
 			{
 				tile,
 				photos: photoIds.map((id) => map.get(id)!).filter(Boolean),
 				photoMap: map,
-				preset: DEFAULT_PRESET
+				preset
 			},
 			{ count: 4, tries: 250, seed }
 		).map((s) => s.carousel);

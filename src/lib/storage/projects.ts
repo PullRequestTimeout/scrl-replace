@@ -1,6 +1,7 @@
 import type { Photo, PhotoId, Project, ProjectId } from '#lib/model/types.ts';
 import type { ImageVariant } from '#lib/model/constants.ts';
 import { blobKey, db, newId } from './db.ts';
+import { getDefaultPresetId } from '#lib/settings.ts';
 
 const VARIANTS: ImageVariant[] = ['working', 'preview', 'thumb'];
 
@@ -21,7 +22,7 @@ export async function createProject(name: string): Promise<Project> {
 		createdAt: now,
 		updatedAt: now,
 		photoIds: [],
-		presetId: 'default',
+		presetId: getDefaultPresetId(),
 		row: null,
 		pinnedTiles: [null, null, null],
 		carousels: null,

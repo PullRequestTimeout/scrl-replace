@@ -21,3 +21,22 @@ export function setColorSpace(value: ColorSpace) {
 		// Blocked storage: the choice just won't persist.
 	}
 }
+
+const DEFAULT_PRESET_KEY = 'pref:default-preset';
+
+/** The style new projects start with. */
+export function getDefaultPresetId(): string {
+	try {
+		return localStorage.getItem(DEFAULT_PRESET_KEY) ?? 'default';
+	} catch {
+		return 'default';
+	}
+}
+
+export function setDefaultPresetId(id: string) {
+	try {
+		localStorage.setItem(DEFAULT_PRESET_KEY, id);
+	} catch {
+		// Blocked storage: new projects use the built-in style.
+	}
+}
