@@ -109,8 +109,9 @@
 					type="button"
 					role="radio"
 					aria-checked={colorSpace === value}
-					class="flex-1 rounded px-2 py-1.5 {colorSpace === value
-						? 'bg-secondary text-foreground'
+					class="flex-1 rounded px-2 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground {colorSpace ===
+					value
+						? 'bg-secondary font-medium text-foreground ring-1 ring-foreground/30'
 						: 'text-muted-foreground'}"
 					onclick={() => chooseColorSpace(value as ColorSpace)}>{label}</button
 				>
