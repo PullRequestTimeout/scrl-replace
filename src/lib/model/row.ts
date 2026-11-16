@@ -81,3 +81,26 @@ export function rowTiles(
 export function rowPhotos(row: GridRow): PhotoId[] {
 	return row.mode === 'split' ? [row.photoId] : [...row.tiles];
 }
+
+/**
+ * The panorama crop that puts tile i's first slide where `tileCrop` shows it: the inverse of
+ * `splitTileCrop`. A tile panned or zoomed past what the panorama allows (its neighbours would
+ * run off the photo) gets the nearest panorama that fits.
+ */
+export function panoramaCropFromTile(photo: PhotoSize, tileCrop: Crop, i: number): Crop {
+	const S = cropSource(photo.width, photo.height, SLIDE_W, SLIDE_H, tileCrop);
+	const span = tileSpanInPanorama(i);
+	const w = (S.w * SPLIT_SOURCE_W) / span.w;
+	const x = S.x - (span.x / SPLIT_SOURCE_W) * w;
+	const cover = Math.max(SPLIT_SOURCE_W / photo.width, SLIDE_H / photo.height);
+	return {
+		fx: (x + w / 2) / photo.width,
+		fy: (S.y + S.h / 2) / photo.height,
+		zoom: Math.max(1, SPLIT_SOURCE_W / w / cover)
+	};
+}
+
+/** Tile i's crop moved to the nearest one that still lines up with a whole panorama. */
+export function snapTileCrop(photo: PhotoSize, tileCrop: Crop, i: number): Crop {
+	return splitTileCrop(photo, panoramaCropFromTile(photo, tileCrop, i), i);
+}
