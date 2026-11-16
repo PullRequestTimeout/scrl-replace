@@ -212,8 +212,27 @@ export function setBackgroundCrop(c: Carousel, i: number, crop: Crop): Carousel 
 }
 
 /**
+ * Remove a background (or close an empty gap). Its neighbours grow into the space, up to
+ * their caps (portrait photos); anything they can't cover is closed up by sliding the rest of
+ * the strip left, so the photos either side always end up touching.
+ */
+export function deleteBackground(c: Carousel, i: number, limit: WidthLimit = NO_LIMIT): Carousel {
+	if (!c.backgrounds[i]) return c;
+	const next = clone(c);
+	if (c.backgrounds.length <= 1) {
+		next.backgrounds[i] = { ...next.backgrounds[i], photoId: null, crop: { ...CENTRED } };
+		return next;
+	}
+	fillSlot(next, i, limit, true);
+	// Deleting the first leaves its neighbour as the grid tile, which must start at 0.
+	next.backgrounds[0].x0 = 0;
+	return next;
+}
+
+/**
  * Put a photo on background i. If the slot is wider than the photo may be, the photo takes
- * only its allowed width and the rest becomes an empty slot after it.
+ * only its allowed width; the background after it grows into the rest where it can, and
+ * whatever is still left becomes an empty slot after the photo.
  */
 export function setBackgroundPhoto(
 	c: Carousel,
@@ -230,31 +249,65 @@ export function setBackgroundPhoto(
 		const at = Math.round(b.x0 + cap);
 		next.backgrounds[i].x1 = at;
 		next.backgrounds.splice(i + 1, 0, { photoId: null, x0: at, x1: b.x1, crop: { ...CENTRED } });
+		fillSlot(next, i + 1, limit, false);
 	}
 	return next;
 }
 
+/** How much wider background k may grow before reaching its cap. */
+const roomAt = (c: Carousel, k: number, limit: WidthLimit) =>
+	Math.max(0, capAt(c, k, limit) - (c.backgrounds[k].x1 - c.backgrounds[k].x0));
+
 /**
- * Remove a background; its neighbour (left, or right for the first) takes its space. If the
- * neighbour can't grow that much (a portrait photo), the slot is emptied instead.
+ * Remove slot i of `c` (mutating it): the left neighbour grows into its space, then the right
+ * one, each up to its cap. Whatever space neither can take either stays as an empty slot
+ * (`closeUp` false) or is closed by sliding everything after it left, frames included, with the
+ * freed width moving to the end of the strip.
  */
-export function deleteBackground(c: Carousel, i: number, limit: WidthLimit = NO_LIMIT): Carousel {
-	const emptied = () => {
-		const next = clone(c);
-		next.backgrounds[i] = { ...next.backgrounds[i], photoId: null, crop: { ...CENTRED } };
-		return next;
-	};
-	if (c.backgrounds.length <= 1) return emptied();
-	const neighbour = i === 0 ? 1 : i - 1;
-	const width = (k: number) => c.backgrounds[k].x1 - c.backgrounds[k].x0;
-	// Deleting the first makes its neighbour the new grid tile, which is exempt from caps.
-	const neighbourCap = i === 0 ? Infinity : capAt(c, neighbour, limit);
-	if (width(neighbour) + width(i) > neighbourCap + 1) return emptied();
-	const next = clone(c);
-	const [removed] = next.backgrounds.splice(i, 1);
-	if (i === 0) next.backgrounds[0].x0 = 0;
-	else next.backgrounds[i - 1].x1 = removed.x1;
-	return next;
+function fillSlot(c: Carousel, i: number, limit: WidthLimit, closeUp: boolean): void {
+	const bgs = c.backgrounds;
+	const [gone] = bgs.splice(i, 1);
+	let rest = gone.x1 - gone.x0;
+	// After the splice, the left neighbour is i-1 and the right one is i.
+	if (i > 0) {
+		const grow = Math.min(rest, roomAt(c, i - 1, limit));
+		bgs[i - 1].x1 += grow;
+		rest -= grow;
+	}
+	if (i < bgs.length) {
+		const grow = Math.min(rest, roomAt(c, i, limit));
+		bgs[i].x0 -= grow;
+		rest -= grow;
+	}
+	if (rest <= 0.5) {
+		// Snap away rounding so the backgrounds stay contiguous.
+		if (i > 0 && i < bgs.length) bgs[i].x0 = bgs[i - 1].x1;
+		return;
+	}
+	const gapStart = i > 0 ? bgs[i - 1].x1 : 0;
+	if (!closeUp) {
+		bgs.splice(i, 0, { photoId: null, x0: gapStart, x1: gapStart + rest, crop: { ...CENTRED } });
+		return;
+	}
+	if (i < bgs.length) {
+		for (const b of bgs.slice(i)) {
+			b.x0 -= rest;
+			b.x1 -= rest;
+		}
+		c.frames = c.frames.map((f) =>
+			f.x + frameWidth(f) / 2 >= gapStart ? clampFrame(c, { ...f, x: f.x - rest }) : f
+		);
+	}
+	// The freed width goes to the end: the last background takes what it can, and the rest
+	// becomes an empty slot (unless it would be a sliver, which the last background absorbs).
+	const W = stripWidth(c);
+	const last = bgs.length - 1;
+	const spare = W - bgs[last].x1;
+	const grow = Math.min(spare, roomAt(c, last, limit));
+	if (spare - grow >= MIN_BG_WIDTH) {
+		bgs[last].x1 += grow;
+		bgs.push({ photoId: null, x0: bgs[last].x1, x1: W, crop: { ...CENTRED } });
+	} else bgs[last].x1 = W;
 }
 
 /**

@@ -270,22 +270,79 @@ describe('portrait width caps', () => {
 		valid(moved);
 	});
 
-	it('empties the slot instead of stretching a portrait neighbour on delete', () => {
+	it('lets the background after a capped photo fill the space it leaves', () => {
+		// q (2:3, cap 900) replaces b's 1920 slot; c grows left into the rest.
 		const c = replacePhoto(sample(), { kind: 'bg', index: 1 }, 'q', 0.667, limit);
-		// q (index 1) now 900 wide with an empty slot after it; delete the 'c' background after that.
-		const idx = c.backgrounds.findIndex((b) => b.photoId === 'c');
-		const d = deleteBackground(c, idx, limit);
-		// Its left neighbour is the empty slot, which can grow freely.
-		expect(d.backgrounds.some((b) => b.photoId === 'c')).toBe(false);
-		valid(d);
-		// But deleting the empty slot next to q leaves it empty rather than stretching q.
-		const emptyIdx = c.backgrounds.findIndex((b) => b.photoId === null);
-		const e = deleteBackground(c, emptyIdx, limit);
-		expect(e.backgrounds[emptyIdx].photoId).toBeNull();
-		expect(e.backgrounds[1].x1 - e.backgrounds[1].x0).toBe(900);
+		expect(c.backgrounds.map((b) => [b.photoId, b.x0, b.x1])).toEqual([
+			['a', 0, 1080],
+			['q', 1080, 1980],
+			['c', 1980, 4320]
+		]);
+		valid(c);
 	});
 
-	it('swaps backgrounds without losing track of indices when a slot is inserted', () => {
+	const bgs = (c: Carousel) => c.backgrounds.map((b) => [b.photoId, b.x0, b.x1]);
+	// a | p (capped 1080) | gap | c: what a delete or swap next to a portrait leaves behind.
+	const gapped = (): Carousel => ({
+		...sample(),
+		backgrounds: [
+			{ photoId: 'a', x0: 0, x1: 1080, crop: { fx: 0.5, fy: 0.5, zoom: 1 } },
+			{ photoId: 'p', x0: 1080, x1: 2160, crop: { fx: 0.5, fy: 0.5, zoom: 1 } },
+			{ photoId: null, x0: 2160, x1: 3000, crop: { fx: 0.5, fy: 0.5, zoom: 1 } },
+			{ photoId: 'c', x0: 3000, x1: 4320, crop: { fx: 0.5, fy: 0.5, zoom: 1 } }
+		]
+	});
+
+	it('closes a gap next to a portrait by growing the background on the other side', () => {
+		const d = deleteBackground(gapped(), 2, limit);
+		expect(bgs(d)).toEqual([
+			['a', 0, 1080],
+			['p', 1080, 2160],
+			['c', 2160, 4320]
+		]);
+		valid(d);
+	});
+
+	it('closes a gap between two portraits by sliding the rest of the strip left', () => {
+		const c = gapped();
+		c.backgrounds[3].photoId = 'q'; // 2:3, cap 900, currently 1320 wide (over its cap)
+		c.backgrounds[3].x1 = 3900;
+		c.backgrounds.push({ photoId: 'e', x0: 3900, x1: 4320, crop: { fx: 0.5, fy: 0.5, zoom: 1 } });
+		c.frames[0].x = 3300; // over q, so it moves with it
+		const d = deleteBackground(c, 2, limit);
+		expect(bgs(d)).toEqual([
+			['a', 0, 1080],
+			['p', 1080, 2160],
+			['q', 2160, 3060],
+			['e', 3060, 4320]
+		]);
+		expect(d.frames[0].x).toBe(3300 - 840);
+		valid(d);
+	});
+
+	it('leaves the freed width as an empty slot at the end when nothing can take it', () => {
+		const c = gapped();
+		c.backgrounds[3].photoId = 'p';
+		const d = deleteBackground(c, 2, limit);
+		expect(bgs(d)).toEqual([
+			['a', 0, 1080],
+			['p', 1080, 2160],
+			['p', 2160, 3480], // keeps its width; it isn't shrunk to the cap
+			[null, 3480, 4320]
+		]);
+		valid(d);
+	});
+
+	it('deletes a background between portraits without leaving a gap', () => {
+		const c = gapped();
+		c.backgrounds[2].photoId = 'b';
+		c.backgrounds[3].photoId = 'p';
+		const d = deleteBackground(c, 2, limit);
+		expect(d.backgrounds.map((b) => b.photoId)).toEqual(['a', 'p', 'p', null]);
+		valid(d);
+	});
+
+	it('swaps a wide landscape with a portrait without leaving a gap', () => {
 		const s = swapPhotos(
 			sample(),
 			{ kind: 'bg', index: 1 },
@@ -293,7 +350,11 @@ describe('portrait width caps', () => {
 			() => 1.5,
 			(id) => (id === 'c' ? 1080 : Infinity)
 		);
-		expect(s.backgrounds.map((b) => b.photoId)).toEqual(['a', 'c', null, 'b']);
+		expect(bgs(s)).toEqual([
+			['a', 0, 1080],
+			['c', 1080, 2160],
+			['b', 2160, 4320]
+		]);
 		valid(s);
 	});
 
