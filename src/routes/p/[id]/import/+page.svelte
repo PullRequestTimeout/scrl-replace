@@ -232,7 +232,14 @@
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
-<Drawer.Root open={selected !== null} onOpenChange={(open) => !open && (selected = null)}>
+<!-- Bound both ways: a swipe-down close writes `open` back, and a one-way prop got stuck
+     closed after that, so tapping another photo no longer opened the sheet. -->
+<Drawer.Root
+	bind:open={() => selected !== null,
+	(open) => {
+		if (!open) selected = null;
+	}}
+>
 	<Drawer.Content>
 		{#if selected}
 			{@const photo = selected}
