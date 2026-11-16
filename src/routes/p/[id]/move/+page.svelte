@@ -185,7 +185,7 @@
 								<LockIcon class="size-3" aria-hidden="true" /> Locked
 							</span>
 						{:else if g !== UNUSED && changed.includes(g)}
-							<span class="ml-auto text-xs text-amber-600 dark:text-amber-500">Will rebuild</span>
+							<span class="ml-auto text-xs text-amber-700 dark:text-amber-500">Will rebuild</span>
 						{/if}
 					</div>
 					{#if members[g].length}
