@@ -42,13 +42,24 @@
 		onAddFrame: () => void;
 		onReplace: () => void;
 		onSwap: () => void;
+		/**
+		 * Set when slide 1 is a tile of a split row: its edges and border stay fixed, and
+		 * `locked` says why it can't change at all (another carousel is locked).
+		 */
+		panorama?: { locked: string | null } | null;
 	}
 
-	let { editor, photos, onAddFrame, onReplace, onSwap }: Props = $props();
+	let { editor, photos, onAddFrame, onReplace, onSwap, panorama = null }: Props = $props();
 
 	const frame = $derived(editor.selectedFrame);
 	const bgIndex = $derived(editor.selection?.kind === 'bg' ? editor.selection.index : -1);
 	const bg = $derived(editor.selectedBackground);
+	/** Slide 1 of a split row: only Replace, Swap and Crop, which recut all three tiles. */
+	const panoramaTile = $derived(bgIndex === 0 && panorama ? panorama : null);
+	/** Slide 1 can't change at all: another carousel is locked. */
+	const held = $derived(!!panoramaTile?.locked);
+	/** Looks disabled but stays focusable, so its explanation is read out. */
+	const DIMMED = 'aria-disabled:cursor-not-allowed aria-disabled:opacity-50';
 
 	const SHAPES = [
 		{ label: 'Original', value: 0 },
@@ -241,7 +252,12 @@
 			>
 		</div>
 	{:else if bg && bgIndex >= 0}
-		{#if bg.photoId}
+		{#if panoramaTile}
+			<p id="panorama-note" class="text-xs text-muted-foreground" role="note">
+				{panoramaTile.locked ??
+					'Slide 1 is part of the split panorama. Replacing, swapping or cropping it changes all three first slides.'}
+			</p>
+		{:else if bg.photoId}
 			{@const maxBorder = maxBackgroundBorder(bg)}
 			{@const border = Math.min(bg.border ?? 0, maxBorder)}
 			<div class="flex items-center gap-3">
@@ -261,37 +277,55 @@
 				<span class="w-10 text-right text-xs tabular-nums">{border}px</span>
 			</div>
 		{/if}
-		<div class="grid grid-cols-4 gap-1">
-			<Button variant="ghost" class="h-auto flex-col py-2 text-xs" onclick={onReplace}
+		<div class="grid {panoramaTile ? 'grid-cols-3' : 'grid-cols-4'} gap-1">
+			<!-- Held back by a lock: still focusable, so VoiceOver reads the note explaining why. -->
+			<Button
+				variant="ghost"
+				class="h-auto flex-col py-2 text-xs {DIMMED}"
+				aria-disabled={held || undefined}
+				aria-describedby={panoramaTile ? 'panorama-note' : undefined}
+				onclick={() => !held && onReplace()}
 				><ReplaceIcon />{bg.photoId ? 'Replace' : 'Choose'}</Button
 			>
 			<Button
 				variant="ghost"
-				class="h-auto flex-col py-2 text-xs"
+				class="h-auto flex-col py-2 text-xs {DIMMED}"
 				disabled={!bg.photoId}
-				onclick={onSwap}><ArrowLeftRightIcon />Swap</Button
+				aria-disabled={held || undefined}
+				aria-describedby={panoramaTile ? 'panorama-note' : undefined}
+				onclick={() => !held && onSwap()}><ArrowLeftRightIcon />Swap</Button
 			>
 			<Button
 				variant="ghost"
-				class="h-auto flex-col py-2 text-xs"
+				class="h-auto flex-col py-2 text-xs {DIMMED}"
 				disabled={!bg.photoId}
-				onclick={() => (editor.cropMode = true)}><CropIcon />Crop</Button
+				aria-disabled={held || undefined}
+				aria-describedby={panoramaTile ? 'panorama-note' : undefined}
+				onclick={() => !held && (editor.cropMode = true)}><CropIcon />Crop</Button
 			>
-			<Button
-				variant="ghost"
-				class="h-auto flex-col py-2 text-xs"
-				disabled={!bg.photoId || editor.carousel.backgrounds.length < 2}
-				onclick={() =>
-					editor.apply(
-						backgroundToFrame(editor.carousel, bgIndex, photoAspect(bg.photoId), editor.widthLimit)
-					)}><FrameIcon />To frame</Button
-			>
-			<Button
-				variant="ghost"
-				class="h-auto flex-col py-2 text-xs text-destructive"
-				onclick={() => editor.apply(deleteBackground(editor.carousel, bgIndex, editor.widthLimit))}
-				><Trash2Icon />{editor.carousel.backgrounds.length > 1 ? 'Delete' : 'Clear'}</Button
-			>
+			{#if !panoramaTile}
+				<Button
+					variant="ghost"
+					class="h-auto flex-col py-2 text-xs"
+					disabled={!bg.photoId || editor.carousel.backgrounds.length < 2}
+					onclick={() =>
+						editor.apply(
+							backgroundToFrame(
+								editor.carousel,
+								bgIndex,
+								photoAspect(bg.photoId),
+								editor.widthLimit
+							)
+						)}><FrameIcon />To frame</Button
+				>
+				<Button
+					variant="ghost"
+					class="h-auto flex-col py-2 text-xs text-destructive"
+					onclick={() =>
+						editor.apply(deleteBackground(editor.carousel, bgIndex, editor.widthLimit))}
+					><Trash2Icon />{editor.carousel.backgrounds.length > 1 ? 'Delete' : 'Clear'}</Button
+				>
+			{/if}
 		</div>
 	{:else}
 		<div class="grid grid-cols-3 gap-1">

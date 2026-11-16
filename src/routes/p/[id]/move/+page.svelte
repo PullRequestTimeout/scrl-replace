@@ -4,6 +4,7 @@
 	import ArrowRightLeftIcon from '@lucide/svelte/icons/arrow-right-left';
 	import CircleSlashIcon from '@lucide/svelte/icons/circle-slash';
 	import Undo2Icon from '@lucide/svelte/icons/undo-2';
+	import LockIcon from '@lucide/svelte/icons/lock';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Progress } from '#lib/components/ui/progress/index.js';
@@ -17,6 +18,7 @@
 	import { rowPhotos } from '#lib/model/row.ts';
 	import { photosIn, type Background, type Carousel } from '#lib/model/layout.ts';
 	import type { PhotoId } from '#lib/model/types.ts';
+	import { isLocked } from '#lib/model/locks.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
 
@@ -40,15 +42,17 @@
 			const project = data.project;
 			if (!project?.carousels || !canMove) return;
 			// Read what each carousel holds now, so hand edits in the editor count. Grid tiles
-			// (and the row's photos) stay put; a photo used twice counts for its first carousel.
+			// (and the row's photos) stay put; a photo used twice counts for its first unlocked
+			// carousel, so it can still be moved there.
 			const fixed = new Set([
 				...(project.row ? rowPhotos(project.row) : []),
 				...project.carousels.map((c) => c.backgrounds[0]?.photoId)
 			]);
 			const map = new Map<PhotoId, Group>();
-			project.carousels.forEach((c, g) => {
-				for (const id of photosIn(c)) if (!fixed.has(id) && !map.has(id)) map.set(id, g as Slot);
-			});
+			const order = [...CAROUSELS].sort((a, b) => +isLocked(project, a) - +isLocked(project, b));
+			for (const g of order)
+				for (const id of photosIn(project.carousels[g]))
+					if (!fixed.has(id) && !map.has(id)) map.set(id, g);
 			for (const p of data.photos) if (!fixed.has(p.id) && !map.has(p.id)) map.set(p.id, UNUSED);
 			original = map;
 			groupOf = new Map(map);
@@ -63,6 +67,9 @@
 	const tiles = $derived(data.project?.carousels?.map((c) => c.backgrounds[0]?.photoId) ?? []);
 	/** Rebuilding keeps each grid tile, so every carousel needs one. */
 	const canMove = $derived(tiles.length === 3 && tiles.every(Boolean));
+	/** Locked carousels: nothing moves into or out of them. */
+	const locked = $derived(CAROUSELS.filter((g) => isLocked(data.project, g)));
+	const isLockedGroup = (g: Group) => g !== UNUSED && locked.includes(g);
 
 	/** Carousels whose set of photos differs from when the screen opened. */
 	const changed = $derived(
@@ -152,7 +159,7 @@
 	{:else if data.loaded}
 		<p class="px-4 text-xs text-muted-foreground">
 			Tap a photo to move it to another carousel. Only carousels that change are rebuilt; the others
-			keep their edits.
+			keep their edits.{locked.length ? ' Locked carousels keep their photos.' : ''}
 		</p>
 
 		{#each GROUPS as g (g)}
@@ -173,7 +180,11 @@
 							{members[g].length}
 							{members[g].length === 1 ? 'photo' : 'photos'}
 						</span>
-						{#if g !== UNUSED && changed.includes(g)}
+						{#if isLockedGroup(g)}
+							<span class="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+								<LockIcon class="size-3" aria-hidden="true" /> Locked
+							</span>
+						{:else if g !== UNUSED && changed.includes(g)}
 							<span class="ml-auto text-xs text-amber-600 dark:text-amber-500">Will rebuild</span>
 						{/if}
 					</div>
@@ -182,32 +193,42 @@
 							{#each members[g] as id (id)}
 								{@const moved = original.get(id) !== g}
 								<li>
-									<DropdownMenu.Root>
-										<DropdownMenu.Trigger
-											class="relative block aspect-square w-full overflow-hidden rounded-md bg-muted {moved
-												? 'ring-2 ring-amber-500'
-												: ''}"
-											aria-label="Photo {ordered.indexOf(id) + 1}{moved
-												? `, moved from ${groupName(original.get(id) ?? UNUSED).toLowerCase()}`
-												: ''}"
+									{#if isLockedGroup(g)}
+										<div
+											class="block aspect-square w-full overflow-hidden rounded-md bg-muted opacity-60"
+											role="img"
+											aria-label="Photo {ordered.indexOf(id) + 1}, locked"
 										>
 											<StoredImage photoId={id} class="size-full object-cover" />
-										</DropdownMenu.Trigger>
-										<DropdownMenu.Content>
-											{#each CAROUSELS as to (to)}
-												{#if to !== g}
-													<DropdownMenu.Item onclick={() => move(id, to)}>
-														<ArrowRightLeftIcon /> Move to {TILE_NAMES[to]}
+										</div>
+									{:else}
+										<DropdownMenu.Root>
+											<DropdownMenu.Trigger
+												class="relative block aspect-square w-full overflow-hidden rounded-md bg-muted {moved
+													? 'ring-2 ring-amber-500'
+													: ''}"
+												aria-label="Photo {ordered.indexOf(id) + 1}{moved
+													? `, moved from ${groupName(original.get(id) ?? UNUSED).toLowerCase()}`
+													: ''}"
+											>
+												<StoredImage photoId={id} class="size-full object-cover" />
+											</DropdownMenu.Trigger>
+											<DropdownMenu.Content>
+												{#each CAROUSELS as to (to)}
+													{#if to !== g && !locked.includes(to)}
+														<DropdownMenu.Item onclick={() => move(id, to)}>
+															<ArrowRightLeftIcon /> Move to {TILE_NAMES[to]}
+														</DropdownMenu.Item>
+													{/if}
+												{/each}
+												{#if g !== UNUSED}
+													<DropdownMenu.Item onclick={() => move(id, UNUSED)}>
+														<CircleSlashIcon /> Leave out
 													</DropdownMenu.Item>
 												{/if}
-											{/each}
-											{#if g !== UNUSED}
-												<DropdownMenu.Item onclick={() => move(id, UNUSED)}>
-													<CircleSlashIcon /> Leave out
-												</DropdownMenu.Item>
-											{/if}
-										</DropdownMenu.Content>
-									</DropdownMenu.Root>
+											</DropdownMenu.Content>
+										</DropdownMenu.Root>
+									{/if}
 								</li>
 							{/each}
 						</ul>

@@ -5,6 +5,8 @@
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import ShareIcon from '@lucide/svelte/icons/share';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import LockIcon from '@lucide/svelte/icons/lock';
+	import { isLocked } from '#lib/model/locks.ts';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import CarouselStrip from '#lib/components/app/CarouselStrip.svelte';
@@ -163,12 +165,19 @@
 					<a
 						href="/p/{project.id}/c/{i + 1}"
 						class="flex flex-col gap-2 rounded-lg py-1 hover:bg-accent/40"
-						aria-label="Carousel {i + 1}, {TILE_NAMES[i]} tile, {carousel.slideCount} slides"
+						aria-label="Carousel {i + 1}, {TILE_NAMES[
+							i
+						]} tile, {carousel.slideCount} slides{isLocked(project, i) ? ', locked' : ''}"
 					>
 						<div class="flex items-center justify-between px-4 text-xs text-muted-foreground">
 							<span>
 								<span class="font-medium text-foreground">{tileLabel(i)}</span> ·
 								{carousel.slideCount} slides
+								{#if isLocked(project, i)}
+									· <span class="inline-flex items-center gap-1"
+										><LockIcon class="size-3" aria-hidden="true" /> Locked</span
+									>
+								{/if}
 							</span>
 							<ChevronRightIcon class="size-4" aria-hidden="true" />
 						</div>

@@ -52,5 +52,7 @@ export interface Project {
 	pinnedTiles: [PhotoId | null, PhotoId | null, PhotoId | null];
 	/** Left, middle, right: each carousel's first slide is that grid tile. */
 	carousels: [Carousel, Carousel, Carousel] | null;
+	/** Finished carousels (left, middle, right): no edits, and no photos moved in or out. Missing = none. */
+	locked?: [boolean, boolean, boolean];
 	exportState: { posted: [boolean, boolean, boolean] };
 }

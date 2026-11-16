@@ -24,6 +24,7 @@
 	import type { Carousel } from '#lib/model/layout.ts';
 	import type { Photo, PhotoId } from '#lib/model/types.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
+	import { anyLocked } from '#lib/model/locks.ts';
 	import { panCrop } from '#lib/editor/crop-gesture.ts';
 	import { SLIDE_H, SPLIT_SOURCE_W } from '#lib/model/constants.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
@@ -164,8 +165,11 @@
 		drag = null;
 	}
 
+	/** A new row rebuilds all three carousels, so it waits until none is locked. */
+	const locked = $derived(anyLocked(data.project));
+
 	async function useRow() {
-		if (!selected || !data.project) return;
+		if (!selected || !data.project || locked) return;
 		if (data.project.carousels && !confirmReplace) {
 			confirmReplace = true;
 			return;
@@ -337,8 +341,20 @@
 	class="fixed inset-x-0 bottom-0 z-10 border-t bg-background/95 backdrop-blur"
 	style="padding-bottom: env(safe-area-inset-bottom)"
 >
-	<div class="mx-auto flex max-w-xl gap-2 p-3">
-		<Button class="flex-1" disabled={!selected || working || loading} onclick={useRow}>
+	<div class="mx-auto flex max-w-xl flex-col gap-2 p-3">
+		{#if locked}
+			<p id="row-locked-note" class="text-xs text-muted-foreground">
+				A new row rebuilds all three carousels. Unlock them first to use one.
+			</p>
+		{/if}
+		<!-- Held back by a lock: still focusable, so VoiceOver reads the note explaining why. -->
+		<Button
+			class="w-full aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+			disabled={!selected || working || loading}
+			aria-disabled={locked || undefined}
+			aria-describedby={locked ? 'row-locked-note' : undefined}
+			onclick={useRow}
+		>
 			{working ? 'Building carousels…' : 'Use this row'}
 		</Button>
 	</div>

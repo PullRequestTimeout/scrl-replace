@@ -6,9 +6,12 @@
 	import Redo2Icon from '@lucide/svelte/icons/redo-2';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import LockIcon from '@lucide/svelte/icons/lock';
 	import { toast } from 'svelte-sonner';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import { Switch } from '#lib/components/ui/switch/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import AppHeader from '#lib/components/app/AppHeader.svelte';
 	import SlideCanvas from '#lib/components/app/SlideCanvas.svelte';
 	import EditorCanvas, { type Zoom } from '#lib/components/editor/EditorCanvas.svelte';
@@ -21,7 +24,16 @@
 	import { ProjectData } from '#lib/stores/project-data.svelte.ts';
 	import { loadPreviewSources } from '#lib/render/preview-cache.ts';
 	import type { DrawSource } from '#lib/render/draw.ts';
-	import type { Carousel } from '#lib/model/layout.ts';
+	import type { Background, Carousel } from '#lib/model/layout.ts';
+	import {
+		guardSplitTile,
+		isLocked,
+		isSplitRow,
+		otherLocked,
+		syncSplitRow,
+		tileChanged,
+		withLock
+	} from '#lib/model/locks.ts';
 	import { frameOuter, maxBackgroundWidth, photosIn } from '#lib/model/layout.ts';
 	import type { Photo, PhotoId } from '#lib/model/types.ts';
 	import { Editor } from '#lib/editor/editor.svelte.ts';
@@ -60,6 +72,122 @@
 	let scroller = $state<HTMLDivElement>();
 
 	const photoMap = $derived(new Map(data.photos.map((p) => [p.id, p])));
+
+	// ---------------------------------------------------------------------------
+	// Locking, and split rows: slide 1 is one tile of a panorama shared by all three carousels.
+
+	const locked = $derived(isLocked(data.project, index));
+	const splitRow = $derived(isSplitRow(data.project));
+	/** Why slide 1 can't change at all (another carousel is locked), when it's a split tile. */
+	const panorama = $derived.by(() => {
+		const p = data.project;
+		if (!p || !splitRow) return null;
+		const other = otherLocked(p, index);
+		return {
+			locked:
+				other >= 0
+					? `Slide 1 is part of the split panorama, and carousel ${other + 1} is locked. Unlock it to change this slide.`
+					: null
+		};
+	});
+
+	let locking = $state(false);
+	async function setLocked(on: boolean) {
+		const project = data.project;
+		if (!project || locking) return;
+		locking = true;
+		try {
+			await flush();
+			const current = data.project ?? project;
+			data.project = await saveProject({
+				...$state.snapshot(current),
+				locked: withLock(current, index, on)
+			});
+			trayOpen = false;
+			editor?.select(null);
+			if (!on) mode = 'edit';
+			toast(on ? 'Carousel locked' : 'Carousel unlocked', { id: 'lock-state' });
+		} catch (e) {
+			console.error(e);
+			toast.error('Couldn’t save that. Try again.');
+		} finally {
+			locking = false;
+		}
+	}
+
+	/**
+	 * Slide 1 as last saved. In a split row, the first change to it on this screen asks first;
+	 * after that, changes recut all three straight away, with an Undo in the toast.
+	 */
+	let confirmedTile: Background | undefined;
+	let tileDialog = $state(false);
+	let splitConfirmed = false;
+	/** The next recut comes from the toast's Undo, so it gets no Undo of its own. */
+	let undoing = false;
+
+	function onEdit(c: Carousel) {
+		if (splitRow && tileChanged(confirmedTile, c.backgrounds[0])) {
+			if (!splitConfirmed) {
+				tileDialog = true;
+				return;
+			}
+			const fromUndo = undoing;
+			undoing = false;
+			void syncTile().then((ok) => {
+				if (!ok) return;
+				if (fromUndo) toast('All three first slides put back', { id: 'split-synced' });
+				else
+					toast('Updated all three first slides', {
+						id: 'split-synced',
+						action: {
+							label: 'Undo',
+							onClick: () => {
+								undoing = true;
+								editor?.undo();
+							}
+						}
+					});
+			});
+			return;
+		}
+		scheduleSave(c);
+	}
+
+	async function confirmTile() {
+		tileDialog = false;
+		splitConfirmed = await syncTile();
+	}
+
+	/** Recut all three first slides from this one and save them, with the row. */
+	async function syncTile(): Promise<boolean> {
+		const project = data.project;
+		if (!editor || !project?.carousels) return false;
+		clearTimeout(saveTimer);
+		pending = null;
+		const carousels = $state.snapshot(project.carousels) as [Carousel, Carousel, Carousel];
+		carousels[index] = $state.snapshot(editor.carousel) as Carousel;
+		const synced = syncSplitRow(carousels, index, (id) => photoMap.get(id)!);
+		if (!synced) return false;
+		confirmedTile = structuredClone($state.snapshot(editor.carousel.backgrounds[0]));
+		try {
+			data.project = await saveProject({
+				...$state.snapshot(project),
+				row: synced.row,
+				carousels: synced.carousels
+			});
+			return true;
+		} catch (e) {
+			console.error(e);
+			toast.error('Couldn’t save changes');
+			return false;
+		}
+	}
+
+	function cancelTile() {
+		if (!tileDialog) return;
+		tileDialog = false;
+		editor?.cancelLast();
+	}
 
 	// ---------------------------------------------------------------------------
 	// Live rule warnings: checked shortly after edits settle, so drags stay smooth.
@@ -103,7 +231,15 @@
 			await data.load();
 			const carousel = data.project?.carousels?.[index];
 			if (!carousel) return;
-			editor = new Editor(structuredClone($state.snapshot(carousel)), scheduleSave, widthLimit);
+			const next = new Editor(structuredClone($state.snapshot(carousel)), onEdit, widthLimit);
+			confirmedTile = structuredClone($state.snapshot(carousel.backgrounds[0]));
+			next.guard = (change, prev) => {
+				const p = data.project;
+				if (!p || !isSplitRow(p)) return change;
+				return guardSplitTile(p, index, prev, change, (id) => photoMap.get(id));
+			};
+			next.onRefuse = (reason) => toast(reason, { id: 'slide-1-fixed' });
+			editor = next;
 			preset = await data.preset();
 			// Decode every project photo once: replacing a photo should feel instant.
 			sources = await loadPreviewSources(data.photos);
@@ -161,7 +297,8 @@
 		if (!carousels) return map;
 		carousels.forEach((c, i) => {
 			if (i === index) return;
-			for (const id of photosIn(c)) map.set(id, `Carousel ${i + 1}`);
+			const label = `Carousel ${i + 1}${isLocked(data.project, i) ? ' · locked' : ''}`;
+			for (const id of photosIn(c)) map.set(id, label);
 		});
 		if (editor) for (const id of photosIn(editor.carousel)) map.set(id, 'Here');
 		return map;
@@ -251,7 +388,7 @@
 	backLabel="Project"
 >
 	{#snippet actions()}
-		{#if editor && mode === 'edit'}
+		{#if editor && mode === 'edit' && !locked}
 			<Button
 				variant="ghost"
 				size="icon"
@@ -273,29 +410,57 @@
 				<Redo2Icon />
 			</Button>
 		{/if}
-		<a
-			href="/p/{page.params.id}/c/{index + 1}/layouts"
-			class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-			aria-label="Other layouts"
-		>
-			<SparklesIcon />
-		</a>
-		<Button
-			variant="ghost"
-			size="icon"
-			{@attach haptic}
-			onclick={() => (mode = mode === 'edit' ? 'preview' : 'edit')}
-			aria-label={mode === 'edit' ? 'Preview slides' : 'Back to editing'}
-		>
-			{#if mode === 'edit'}<EyeIcon />{:else}<PencilIcon />{/if}
-		</Button>
+		{#if !locked}
+			<a
+				href="/p/{page.params.id}/c/{index + 1}/layouts"
+				class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+				aria-label="Other layouts"
+			>
+				<SparklesIcon />
+			</a>
+			<Button
+				variant="ghost"
+				size="icon"
+				{@attach haptic}
+				onclick={() => (mode = mode === 'edit' ? 'preview' : 'edit')}
+				aria-label={mode === 'edit' ? 'Preview slides' : 'Back to editing'}
+			>
+				{#if mode === 'edit'}<EyeIcon />{:else}<PencilIcon />{/if}
+			</Button>
+		{/if}
 	{/snippet}
 </AppHeader>
 
-{#if editor && mode === 'edit'}
+{#if editor}
+	<div class="mx-auto flex h-14 max-w-xl items-center justify-between gap-3 px-4">
+		<!-- The whole label is the tap target (44pt+), not just the switch. -->
+		<label for="carousel-locked" class="flex min-h-11 flex-1 items-center gap-3">
+			<Switch
+				id="carousel-locked"
+				checked={locked}
+				disabled={locking}
+				onCheckedChange={setLocked}
+				aria-labelledby="carousel-locked-title"
+				aria-describedby="carousel-locked-hint"
+				{@attach haptic}
+			/>
+			<span class="flex flex-col gap-0.5">
+				<span id="carousel-locked-title" class="text-sm leading-tight">Lock this carousel</span>
+				<span id="carousel-locked-hint" class="text-xs leading-tight text-muted-foreground">
+					Stops edits and photo moves.
+				</span>
+			</span>
+		</label>
+		<span class="text-xs text-muted-foreground tabular-nums">
+			{editor.carousel.slideCount} slides
+		</span>
+	</div>
+{/if}
+
+{#if editor && mode === 'edit' && !locked}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 	<main
-		class="mx-auto flex min-h-[calc(100dvh-3rem)] max-w-xl flex-col pb-72"
+		class="mx-auto flex min-h-[calc(100dvh-6.5rem)] max-w-xl flex-col pb-72"
 		onclick={onBackdropClick}
 	>
 		<div class="flex items-center justify-between px-4 py-2">
@@ -319,12 +484,7 @@
 					onclick={() => (zoom = 'slide')}>Slide</button
 				>
 			</div>
-			<div class="flex items-center gap-2">
-				<RuleWarnings {warnings} onShow={showWarning} />
-				<span class="text-xs text-muted-foreground tabular-nums">
-					{editor.carousel.slideCount} slides
-				</span>
-			</div>
+			<RuleWarnings {warnings} onShow={showWarning} />
 		</div>
 
 		<EditorCanvas
@@ -353,6 +513,7 @@
 				onAddFrame={() => openTray({ kind: 'add' })}
 				onReplace={() => editor?.selection && openTray({ kind: 'replace', ref: editor.selection })}
 				onSwap={() => editor?.selection && openTray({ kind: 'swap', ref: editor.selection })}
+				{panorama}
 			/>
 		</div>
 	</div>
@@ -367,8 +528,14 @@
 		{usage}
 		onPick={pick}
 	/>
-{:else if editor && mode === 'preview'}
+{:else if editor}
 	<main class="mx-auto flex max-w-xl flex-col gap-3 py-4">
+		{#if locked}
+			<p class="flex items-start gap-1.5 px-4 text-sm text-muted-foreground">
+				<LockIcon class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+				Locked, so it can’t be edited and no photos move in or out. Turn off the lock above to make changes.
+			</p>
+		{/if}
 		<div
 			bind:this={scroller}
 			onscroll={onScroll}
@@ -388,3 +555,20 @@
 {:else if data.loaded}
 	<p class="p-6 text-sm text-muted-foreground">This carousel doesn’t exist yet.</p>
 {/if}
+
+<AlertDialog.Root open={tileDialog} onOpenChange={(o) => !o && cancelTile()}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Change all three first slides?</AlertDialog.Title>
+			<AlertDialog.Description>
+				Slide 1 is part of the split panorama across the grid row. The first slides of the other two
+				carousels change with it, so the three tiles still line up, and any crop you gave them is
+				replaced. After this, changes to slide 1 here update all three straight away.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel onclick={cancelTile}>Undo change</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={confirmTile}>Change all three slides</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>

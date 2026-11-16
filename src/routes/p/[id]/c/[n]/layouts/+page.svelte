@@ -15,6 +15,7 @@
 	import { toLayoutPhotos } from '#lib/layout/types.ts';
 	import { photosIn, type Background, type Carousel } from '#lib/model/layout.ts';
 	import type { PhotoId } from '#lib/model/types.ts';
+	import { isLocked, isSplitRow, tileChanged } from '#lib/model/locks.ts';
 	import { saveProject } from '#lib/storage/projects.ts';
 	import { TILE_NAMES } from '#lib/export/share.ts';
 
@@ -49,19 +50,23 @@
 
 	async function generate() {
 		const input = inputs();
-		if (!input) {
+		if (!input || locked) {
 			loading = false;
 			return;
 		}
 		loading = true;
 		try {
-			layouts = await imageWorker().suggestFor(
+			const options = await imageWorker().suggestFor(
 				input.tile,
 				input.photoIds,
 				toLayoutPhotos(data.photos),
 				await data.preset(),
 				seed
 			);
+			// A split row's first slide is one tile of the panorama: only layouts that keep it.
+			layouts = isSplitRow(data.project)
+				? options.filter((c) => !tileChanged(input.tile, c.backgrounds[0]))
+				: options;
 		} catch (e) {
 			console.error(e);
 			toast.error('Couldn’t make layouts');
@@ -79,13 +84,14 @@
 		const chosen = choosing;
 		choosing = null;
 		const project = data.project;
-		if (!chosen || !project?.carousels) return;
+		if (!chosen || !project?.carousels || locked) return;
 		const carousels = $state.snapshot(project.carousels) as [Carousel, Carousel, Carousel];
 		carousels[index] = $state.snapshot(chosen) as Carousel;
 		data.project = await saveProject({ ...$state.snapshot(project), carousels });
 		await goto(`/p/${project.id}/c/${index + 1}`);
 	}
 
+	const locked = $derived(isLocked(data.project, index));
 	const hasTile = $derived(!!data.project?.carousels?.[index]?.backgrounds[0]?.photoId);
 </script>
 
@@ -105,7 +111,11 @@
 		</div>
 	{/if}
 
-	{#if data.loaded && !hasTile}
+	{#if data.loaded && locked}
+		<p class="px-4 text-sm text-muted-foreground">
+			This carousel is locked. Turn off Locked in the editor to try other layouts.
+		</p>
+	{:else if data.loaded && !hasTile}
 		<p class="px-4 text-sm text-muted-foreground">
 			Choose this carousel’s grid tile photo first; layouts are built around it.
 		</p>
@@ -147,7 +157,12 @@
 	style="padding-bottom: env(safe-area-inset-bottom)"
 >
 	<div class="mx-auto flex max-w-xl gap-2 p-3">
-		<Button variant="outline" class="flex-1" disabled={loading || !hasTile} onclick={more}>
+		<Button
+			variant="outline"
+			class="flex-1"
+			disabled={loading || !hasTile || locked}
+			onclick={more}
+		>
 			<RefreshCwIcon /> More layouts
 		</Button>
 	</div>

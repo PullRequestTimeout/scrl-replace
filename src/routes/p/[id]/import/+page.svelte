@@ -15,6 +15,7 @@
 	import { canBeSplitRow, orientationOf } from '#lib/images/geometry.ts';
 	import { revokeImageUrls } from '#lib/images/object-urls.ts';
 	import type { Photo, PhotoRole, Project } from '#lib/model/types.ts';
+	import { lockedCarouselUsing } from '#lib/model/locks.ts';
 	import {
 		getPhotos,
 		getProject,
@@ -68,7 +69,11 @@
 		}
 	});
 
+	/** A locked carousel that uses this photo, which keeps it in the project (-1 if none). */
+	const lockedIn = (photo: Photo) => (project ? lockedCarouselUsing(project, photo.id) : -1);
+
 	async function remove(photo: Photo) {
+		if (lockedIn(photo) >= 0) return;
 		selected = null;
 		await removePhotoFromProject(projectId, photo.id);
 		revokeImageUrls(photo.id);
@@ -235,10 +240,12 @@
 <!-- Bound both ways: a swipe-down close writes `open` back, and a one-way prop got stuck
      closed after that, so tapping another photo no longer opened the sheet. -->
 <Drawer.Root
-	bind:open={() => selected !== null,
-	(open) => {
-		if (!open) selected = null;
-	}}
+	bind:open={
+		() => selected !== null,
+		(open) => {
+			if (!open) selected = null;
+		}
+	}
 >
 	<Drawer.Content>
 		{#if selected}
@@ -270,7 +277,19 @@
 				{/if}
 			</div>
 			<Drawer.Footer>
-				<Button variant="destructive" onclick={() => remove(photo)}>Remove from project</Button>
+				{#if lockedIn(photo) >= 0}
+					<p id="remove-locked-note" class="text-center text-xs text-muted-foreground">
+						Carousel {lockedIn(photo) + 1} is locked and uses this photo. Unlock it to remove the photo.
+					</p>
+				{/if}
+				<!-- Held back by a lock: still focusable, so VoiceOver reads the note explaining why. -->
+				<Button
+					variant="destructive"
+					class="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+					aria-disabled={lockedIn(photo) >= 0 || undefined}
+					aria-describedby={lockedIn(photo) >= 0 ? 'remove-locked-note' : undefined}
+					onclick={() => remove(photo)}>Remove from project</Button
+				>
 				<Drawer.Close class="w-full">
 					{#snippet child({ props })}
 						<Button variant="outline" {...props}>Close</Button>
