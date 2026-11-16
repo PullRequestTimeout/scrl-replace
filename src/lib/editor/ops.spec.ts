@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { frameWidth, stripWidth, structuralErrors, type Carousel } from '#lib/model/layout.ts';
+import {
+	backgroundInner,
+	frameWidth,
+	stripWidth,
+	structuralErrors,
+	type Carousel
+} from '#lib/model/layout.ts';
 import {
 	addFrame,
 	addSlide,
@@ -13,6 +19,7 @@ import {
 	replacePhoto,
 	resizeFrame,
 	restackFrame,
+	setBackgroundBorder,
 	setFrameBorder,
 	snapFrame,
 	snapJoin,
@@ -361,5 +368,33 @@ describe('portrait width caps', () => {
 	it('exempts the grid tile', () => {
 		const c = replacePhoto(sample(), { kind: 'bg', index: 0 }, 'q', 0.667, limit);
 		expect(c.backgrounds[0]).toMatchObject({ photoId: 'q', x0: 0, x1: 1080 });
+	});
+});
+
+describe('background borders', () => {
+	it('insets the photo area on every side', () => {
+		const c = setBackgroundBorder(sample(), 1, 40);
+		expect(c.backgrounds[1].border).toBe(40);
+		expect(backgroundInner(c.backgrounds[1])).toEqual({ x: 1120, y: 40, w: 1840, h: 1270 });
+		valid(c);
+	});
+
+	it('clamps to an eighth of the height and a quarter of the width', () => {
+		expect(setBackgroundBorder(sample(), 1, 999).backgrounds[1].border).toBe(168);
+		const narrow: Carousel = {
+			...sample(),
+			backgrounds: [
+				{ photoId: 'a', x0: 0, x1: 1080, crop: { fx: 0.5, fy: 0.5, zoom: 1 } },
+				{ photoId: 'b', x0: 1080, x1: 1480, crop: { fx: 0.5, fy: 0.5, zoom: 1 } },
+				{ photoId: 'c', x0: 1480, x1: 4320, crop: { fx: 0.5, fy: 0.5, zoom: 1 } }
+			]
+		};
+		expect(setBackgroundBorder(narrow, 1, 999).backgrounds[1].border).toBe(100);
+	});
+
+	it('drops the field at zero and leaves the full box', () => {
+		const c = setBackgroundBorder(setBackgroundBorder(sample(), 1, 40), 1, 0);
+		expect('border' in c.backgrounds[1]).toBe(false);
+		expect(backgroundInner(c.backgrounds[1])).toEqual({ x: 1080, y: 0, w: 1920, h: 1350 });
 	});
 });

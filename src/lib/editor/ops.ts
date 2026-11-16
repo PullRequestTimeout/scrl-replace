@@ -8,6 +8,7 @@ import {
 	clamp,
 	DEFAULT_BORDER_RATIO,
 	frameWidth,
+	maxBackgroundBorder,
 	stripWidth,
 	type Background,
 	type Carousel,
@@ -201,6 +202,17 @@ export function moveJoin(
 	const next = clone(c);
 	next.backgrounds[i - 1].x1 = at;
 	next.backgrounds[i].x0 = at;
+	return next;
+}
+
+/** Set a background's border, clamped so its photo keeps most of its box. */
+export function setBackgroundBorder(c: Carousel, i: number, border: number): Carousel {
+	const next = clone(c);
+	const b = next.backgrounds[i];
+	if (!b) return c;
+	const k = clamp(Math.round(border), 0, maxBackgroundBorder(b));
+	if (k > 0) b.border = k;
+	else delete b.border;
 	return next;
 }
 

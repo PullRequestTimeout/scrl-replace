@@ -1,6 +1,7 @@
 import { SLIDE_H, SLIDE_W } from '#lib/model/constants.ts';
 import type { PhotoId } from '#lib/model/types.ts';
 import {
+	backgroundInner,
 	backgroundRect,
 	cropSource,
 	frameInner,
@@ -67,10 +68,15 @@ export function drawCarousel(
 	for (const bg of carousel.backgrounds) {
 		const r = backgroundRect(bg);
 		if (!intersects(r, x0, x1)) continue;
+		const inner = bg.photoId ? backgroundInner(bg) : r;
+		if (bg.photoId && (bg.border ?? 0) > 0) {
+			ctx.fillStyle = borderColor;
+			ctx.fillRect(r.x, r.y, r.w, r.h);
+		}
 		drawPhoto(
 			ctx,
 			bg.photoId ? lookup(bg.photoId) : undefined,
-			r,
+			inner,
 			bg.crop,
 			bg.photoId ? placeholder : emptyFill,
 			scale

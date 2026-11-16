@@ -3,6 +3,7 @@
 	import { GRID_HIDDEN_SIDE, SLIDE_H, SLIDE_W } from '#lib/model/constants.ts';
 	import { HEX_COLOUR } from '#lib/model/presets.ts';
 	import {
+		backgroundInner,
 		backgroundRect,
 		frameInner,
 		frameOuter,
@@ -218,7 +219,7 @@
 		}
 		const b = carousel.backgrounds[ref.index];
 		const p = b?.photoId ? photos.get(b.photoId) : undefined;
-		return b && p ? { ref, box: backgroundRect(b), crop: b.crop, photo: p } : null;
+		return b && p ? { ref, box: backgroundInner(b), crop: b.crop, photo: p } : null;
 	}
 
 	function applyCrop(ref: ElementRef, crop: Crop) {

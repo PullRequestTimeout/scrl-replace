@@ -20,6 +20,8 @@ export interface Background {
 	x0: number;
 	x1: number;
 	crop: Crop;
+	/** Optional white border inset on all four sides, in strip px. Missing means none. */
+	border?: number;
 }
 
 /** White-bordered photo placed over the backgrounds. Coordinates are the outer box. */
@@ -85,6 +87,18 @@ export function frameOuter(f: Frame): Rect {
 
 export function backgroundRect(b: Background): Rect {
 	return { x: b.x0, y: 0, w: b.x1 - b.x0, h: SLIDE_H };
+}
+
+/** Widest border a background may have: like frames, an eighth of its height, and never more than a quarter of its width. */
+export function maxBackgroundBorder(b: Pick<Background, 'x0' | 'x1'>): number {
+	return Math.max(0, Math.floor(Math.min(SLIDE_H / 8, (b.x1 - b.x0) / 4)));
+}
+
+/** The photo area of a background: its full box minus the border on every side. */
+export function backgroundInner(b: Background): Rect {
+	const r = backgroundRect(b);
+	const k = Math.min(b.border ?? 0, maxBackgroundBorder(b));
+	return k > 0 ? { x: r.x + k, y: k, w: r.w - 2 * k, h: r.h - 2 * k } : r;
 }
 
 /**

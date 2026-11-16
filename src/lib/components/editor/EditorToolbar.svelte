@@ -24,6 +24,7 @@
 		deleteFrame,
 		frameToBackground,
 		restackFrame,
+		setBackgroundBorder,
 		setBackgroundCrop,
 		setFrameAspect,
 		setFrameBorder,
@@ -32,7 +33,7 @@
 		removeSlide
 	} from '#lib/editor/ops.ts';
 	import { MAX_ZOOM, zoomCrop } from '#lib/editor/crop-gesture.ts';
-	import { backgroundRect, frameInner } from '#lib/model/layout.ts';
+	import { backgroundInner, frameInner, maxBackgroundBorder } from '#lib/model/layout.ts';
 	import { haptic } from '#lib/haptics.ts';
 
 	interface Props {
@@ -71,7 +72,7 @@
 		}
 		if (bg?.photoId) {
 			const p = photos.get(bg.photoId);
-			return p ? { photo: p, box: backgroundRect(bg), crop: bg.crop } : null;
+			return p ? { photo: p, box: backgroundInner(bg), crop: bg.crop } : null;
 		}
 		return null;
 	});
@@ -175,6 +176,7 @@
 				onValueCommit={endSlide}
 				class="flex-1"
 				aria-label="Border width"
+				valueText={(v: number) => `${v} pixels`}
 			/>
 			<span class="w-10 text-right text-xs tabular-nums">{frame.border}px</span>
 		</div>
@@ -239,6 +241,26 @@
 			>
 		</div>
 	{:else if bg && bgIndex >= 0}
+		{#if bg.photoId}
+			{@const maxBorder = maxBackgroundBorder(bg)}
+			{@const border = Math.min(bg.border ?? 0, maxBorder)}
+			<div class="flex items-center gap-3">
+				<span class="w-12 text-xs text-muted-foreground">Border</span>
+				<Slider
+					type="single"
+					min={0}
+					max={maxBorder}
+					step={1}
+					value={border}
+					onValueChange={(v: number) => slide(setBackgroundBorder(editor.carousel, bgIndex, v))}
+					onValueCommit={endSlide}
+					class="flex-1"
+					aria-label="Border width"
+					valueText={(v: number) => `${v} pixels`}
+				/>
+				<span class="w-10 text-right text-xs tabular-nums">{border}px</span>
+			</div>
+		{/if}
 		<div class="grid grid-cols-4 gap-1">
 			<Button variant="ghost" class="h-auto flex-col py-2 text-xs" onclick={onReplace}
 				><ReplaceIcon />{bg.photoId ? 'Replace' : 'Choose'}</Button
